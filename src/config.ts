@@ -2,7 +2,7 @@ const Config = {
   // Azure Function App or Container App endpoint
   apiBaseUrl: __DEV__
     ? 'http://localhost:7071/api'
-    : 'https://nhutin-api.azurewebsites.net/api',
+    : 'https://nhutin-trucker-api.azurewebsites.net/api',
 
   // Endpoint
   endpoint: '/trips',

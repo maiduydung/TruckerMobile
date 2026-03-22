@@ -21,7 +21,14 @@
       }
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "name": "Nhu Tin Trucker",
+      "shortName": "Trucker",
+      "description": "Quản lý chuyến xe tải",
+      "backgroundColor": "#f9f9f9",
+      "themeColor": "#1273FF",
+      "startUrl": "/",
+      "display": "standalone"
     },
     "plugins": [
       "@react-native-community/datetimepicker"
