@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Platform,
   Alert,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -17,6 +18,8 @@ import { TripFormData, AdditionalCost, DRIVERS, PICKUP_LOCATIONS, DELIVERY_LOCAT
 import { formatNumber, parseNumber, generateId } from './utils';
 import { PickerModal } from './PickerModal';
 import { DatePickerModal } from './DatePickerModal';
+import { GpsCoordinates, captureGps } from './gps';
+import { buildPayload, submitTrip } from './api';
 
 function SectionCard({ children }: { children: React.ReactNode }) {
   return <View style={styles.card}>{children}</View>;
@@ -29,6 +32,7 @@ function SectionHeader({
   badge,
   badgeBg,
   badgeText,
+  onBadgePress,
 }: {
   icon: keyof typeof MaterialIcons.glyphMap;
   iconColor: string;
@@ -36,6 +40,7 @@ function SectionHeader({
   badge?: string;
   badgeBg?: string;
   badgeText?: string;
+  onBadgePress?: () => void;
 }) {
   return (
     <View style={styles.sectionHeader}>
@@ -44,9 +49,14 @@ function SectionHeader({
         <Text style={styles.sectionTitle}>{title}</Text>
       </View>
       {badge && (
-        <View style={[styles.badge, { backgroundColor: badgeBg }]}>
+        <TouchableOpacity
+          style={[styles.badge, { backgroundColor: badgeBg }]}
+          onPress={onBadgePress}
+          disabled={!onBadgePress}
+          activeOpacity={onBadgePress ? 0.6 : 1}
+        >
           <Text style={[styles.badgeText, { color: badgeText }]}>{badge}</Text>
-        </View>
+        </TouchableOpacity>
       )}
     </View>
   );
@@ -103,6 +113,22 @@ export default function TripScreen() {
   const [showDriverPicker, setShowDriverPicker] = useState(false);
   const [showPickupLocationPicker, setShowPickupLocationPicker] = useState(false);
   const [showDeliveryLocationPicker, setShowDeliveryLocationPicker] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const pickupGps = useRef<GpsCoordinates | null>(null);
+  const deliveryGps = useRef<GpsCoordinates | null>(null);
+  const [pickupGpsCaptured, setPickupGpsCaptured] = useState(false);
+
+  const handlePickupStart = async () => {
+    const gps = await captureGps();
+    pickupGps.current = gps;
+    setPickupGpsCaptured(true);
+    if (gps) {
+      Alert.alert('GPS đã lưu', `Vị trí lấy hàng: ${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}`);
+    } else {
+      Alert.alert('GPS', 'Không lấy được vị trí. Chuyến đi vẫn được ghi nhận.');
+    }
+  };
 
   const updateForm = useCallback(<K extends keyof TripFormData>(key: K, value: TripFormData[K]) => {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -156,25 +182,45 @@ export default function TripScreen() {
     setShowDeliveryDate(false);
   };
 
-  const handleSaveDraft = () => {
-    Alert.alert('Lưu tạm', 'Chuyến đi đã được lưu tạm thành công!');
+  const handleSaveDraft = async () => {
+    setSubmitting(true);
+    try {
+      const payload = buildPayload(form, true, pickupGps.current, deliveryGps.current);
+      await submitTrip(payload);
+      Alert.alert('Lưu tạm', 'Chuyến đi đã được lưu tạm thành công!');
+    } catch {
+      Alert.alert('Lỗi', 'Không thể lưu tạm. Vui lòng thử lại.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
     if (!form.driverName) {
       Alert.alert('Thiếu thông tin', 'Vui lòng chọn tài xế.');
       return;
     }
-    const pickup = parseNumber(form.pickupWeight);
-    const delivery = parseNumber(form.deliveryWeight);
-    if (pickup > 0 && delivery > 0 && Math.abs(pickup - delivery) > 1000) {
+    const pickupKg = parseNumber(form.pickupWeight);
+    const deliveryKg = parseNumber(form.deliveryWeight);
+    if (pickupKg > 0 && deliveryKg > 0 && Math.abs(pickupKg - deliveryKg) > 1000) {
       Alert.alert(
         'Sai số lượng',
         `Chênh lệch giữa lấy (${form.pickupWeight} kg) và giao (${form.deliveryWeight} kg) không được quá 1,000 kg.`
       );
       return;
     }
-    Alert.alert('Hoàn tất', 'Chuyến đi đã được hoàn tất!');
+
+    setSubmitting(true);
+    try {
+      deliveryGps.current = await captureGps();
+      const payload = buildPayload(form, false, pickupGps.current, deliveryGps.current);
+      await submitTrip(payload);
+      Alert.alert('Hoàn tất', 'Chuyến đi đã được hoàn tất!');
+    } catch {
+      Alert.alert('Lỗi', 'Không thể gửi dữ liệu. Vui lòng thử lại.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -215,9 +261,10 @@ export default function TripScreen() {
               icon="upload"
               iconColor={Colors.tertiary}
               title="LẤY HÀNG"
-              badge="BẮT ĐẦU"
-              badgeBg={Colors.tertiaryFixedBg}
-              badgeText={Colors.tertiaryFixedText}
+              badge={pickupGpsCaptured ? 'GPS ✓' : 'BẮT ĐẦU'}
+              badgeBg={pickupGpsCaptured ? '#d1fae5' : Colors.tertiaryFixedBg}
+              badgeText={pickupGpsCaptured ? '#065f46' : Colors.tertiaryFixedText}
+              onBadgePress={handlePickupStart}
             />
             <Label text="NGÀY LẤY" />
             <TouchableOpacity style={styles.input} onPress={() => setShowPickupDate(true)}>
@@ -368,11 +415,11 @@ export default function TripScreen() {
 
         {/* Bottom Action Bar */}
         <SafeAreaView edges={['bottom']} style={styles.bottomBar}>
-          <TouchableOpacity style={styles.draftButton} onPress={handleSaveDraft} activeOpacity={0.7}>
-            <Text style={styles.draftButtonText}>LƯU TẠM</Text>
+          <TouchableOpacity style={styles.draftButton} onPress={handleSaveDraft} activeOpacity={0.7} disabled={submitting}>
+            {submitting ? <ActivityIndicator size="small" color={Colors.slateText} /> : <Text style={styles.draftButtonText}>LƯU TẠM</Text>}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.completeButton} onPress={handleComplete} activeOpacity={0.7}>
-            <Text style={styles.completeButtonText}>HOÀN TẤT CHUYẾN</Text>
+          <TouchableOpacity style={styles.completeButton} onPress={handleComplete} activeOpacity={0.7} disabled={submitting}>
+            {submitting ? <ActivityIndicator size="small" color={Colors.white} /> : <Text style={styles.completeButtonText}>HOÀN TẤT CHUYẾN</Text>}
           </TouchableOpacity>
         </SafeAreaView>
       </KeyboardAvoidingView>
