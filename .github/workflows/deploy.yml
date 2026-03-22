@@ -1,0 +1,94 @@
+name: Deploy Trucker PWA
+
+on:
+  push:
+    branches:
+      - TruckerMobile
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  NODE_VERSION: "20"
+  STATIC_WEB_APP_NAME: "nhutin-trucker"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web export
+        run: npx expo export --platform web
+
+      - name: Add PWA files
+        run: |
+          cp web/manifest.json dist/manifest.json
+          cp web/register-sw.js dist/register-sw.js
+          cp web/sw.js dist/sw.js
+          cp assets/icon-192.png dist/assets/icon-192.png
+          cp assets/icon-512.png dist/assets/icon-512.png
+
+          # Patch index.html with PWA tags
+          node -e "
+          const fs = require('fs');
+          let html = fs.readFileSync('dist/index.html', 'utf8');
+          if (!html.includes('manifest.json')) {
+            html = html.replace('</head>',
+              '    <link rel=\"manifest\" href=\"/manifest.json\" />\n' +
+              '    <meta name=\"apple-mobile-web-app-capable\" content=\"yes\" />\n' +
+              '    <meta name=\"apple-mobile-web-app-status-bar-style\" content=\"default\" />\n' +
+              '    <meta name=\"apple-mobile-web-app-title\" content=\"Trucker\" />\n' +
+              '    <link rel=\"apple-touch-icon\" href=\"/assets/icon-192.png\" />\n' +
+              '  </head>');
+          }
+          if (!html.includes('register-sw.js')) {
+            html = html.replace('</body>',
+              '    <script src=\"/register-sw.js\"></script>\n  </body>');
+          }
+          fs.writeFileSync('dist/index.html', html);
+          "
+
+      - name: Login to Azure with OIDC
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_DUNG_GH_DEPLOYER_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_DUNG_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get deployment token
+        id: token
+        run: |
+          TOKEN=$(az staticwebapp secrets list --name ${{ env.STATIC_WEB_APP_NAME }} --query "properties.apiKey" -o tsv)
+          echo "::add-mask::$TOKEN"
+          echo "value=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Azure Static Web Apps
+        run: |
+          npx --yes @azure/static-web-apps-cli deploy ./dist \
+            --deployment-token "${{ steps.token.outputs.value }}" \
+            --env production
+
+      - name: Post-deploy verification
+        run: |
+          sleep 10
+          URL="https://proud-desert-0efdc0a00.4.azurestaticapps.net"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
+          if [[ "$STATUS" == "200" ]]; then
+            echo "PWA is live at $URL"
+          else
+            echo "Got HTTP $STATUS — may need a moment to propagate"
+          fi
