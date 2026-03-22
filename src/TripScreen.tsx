@@ -18,7 +18,6 @@ import { TripFormData, AdditionalCost, DRIVERS, PICKUP_LOCATIONS, DELIVERY_LOCAT
 import { formatNumber, parseNumber, generateId } from './utils';
 import { PickerModal } from './PickerModal';
 import { DatePickerModal } from './DatePickerModal';
-import { GpsCoordinates, captureGps } from './gps';
 import { buildPayload, submitTrip } from './api';
 
 function SectionCard({ children }: { children: React.ReactNode }) {
@@ -115,20 +114,6 @@ export default function TripScreen() {
   const [showDeliveryLocationPicker, setShowDeliveryLocationPicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const pickupGps = useRef<GpsCoordinates | null>(null);
-  const deliveryGps = useRef<GpsCoordinates | null>(null);
-  const [pickupGpsCaptured, setPickupGpsCaptured] = useState(false);
-
-  const handlePickupStart = async () => {
-    const gps = await captureGps();
-    pickupGps.current = gps;
-    setPickupGpsCaptured(true);
-    if (gps) {
-      Alert.alert('GPS đã lưu', `Vị trí lấy hàng: ${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}`);
-    } else {
-      Alert.alert('GPS', 'Không lấy được vị trí. Chuyến đi vẫn được ghi nhận.');
-    }
-  };
 
   const updateForm = useCallback(<K extends keyof TripFormData>(key: K, value: TripFormData[K]) => {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -185,7 +170,7 @@ export default function TripScreen() {
   const handleSaveDraft = async () => {
     setSubmitting(true);
     try {
-      const payload = buildPayload(form, true, pickupGps.current, deliveryGps.current);
+      const payload = buildPayload(form, true, null, null);
       await submitTrip(payload);
       Alert.alert('Lưu tạm', 'Chuyến đi đã được lưu tạm thành công!');
     } catch {
@@ -212,8 +197,7 @@ export default function TripScreen() {
 
     setSubmitting(true);
     try {
-      deliveryGps.current = await captureGps();
-      const payload = buildPayload(form, false, pickupGps.current, deliveryGps.current);
+      const payload = buildPayload(form, false, null, null);
       await submitTrip(payload);
       Alert.alert('Hoàn tất', 'Chuyến đi đã được hoàn tất!');
     } catch {
@@ -261,10 +245,6 @@ export default function TripScreen() {
               icon="upload"
               iconColor={Colors.tertiary}
               title="LẤY HÀNG"
-              badge={pickupGpsCaptured ? 'GPS ✓' : 'BẮT ĐẦU'}
-              badgeBg={pickupGpsCaptured ? '#d1fae5' : Colors.tertiaryFixedBg}
-              badgeText={pickupGpsCaptured ? '#065f46' : Colors.tertiaryFixedText}
-              onBadgePress={handlePickupStart}
             />
             <Label text="NGÀY LẤY" />
             <TouchableOpacity style={styles.input} onPress={() => setShowPickupDate(true)}>
