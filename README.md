@@ -1,44 +1,186 @@
-# Nhu Tin Trucker
+# NhuTin Trucker Mobile
 
-Mobile app for truckers to log trip details and manage fees. Built with Expo (React Native), targeting iOS and Android.
+Cross-platform mobile app for truck drivers to log trip details, track costs, and manage deliveries. Built with Expo (React Native), targeting iOS, Android, and Web.
+
+## System Architecture
+
+```mermaid
+graph TB
+    subgraph "Mobile App (this repo)"
+        A[DriverSelectScreen] --> B[TripListScreen]
+        B --> C[TripScreen<br/>New Trip]
+        B --> D[TripScreen<br/>Edit Trip]
+    end
+
+    subgraph "Backend (TruckerMobileBackend)"
+        E[Azure Function App<br/>REST API]
+        F[(PostgreSQL)]
+    end
+
+    C -- "POST /api/trips" --> E
+    D -- "PUT /api/trips/:id" --> E
+    B -- "GET /api/trips?driver=X" --> E
+    B -- "DELETE /api/trips/:id" --> E
+    E --> F
+```
+
+## User Flow
+
+Three-screen app designed for truckers with minimal tech literacy. Every interaction is max 2 taps.
+
+```mermaid
+flowchart TD
+    A[Open App] --> B[Pick Your Name]
+    B --> C[See Your Recent Trips]
+    C --> D{What to do?}
+    D -->|New delivery| E[Fill Trip Form]
+    D -->|Fix a mistake| F[Tap Existing Trip]
+    D -->|Remove junk| G[Delete Trip]
+    F --> E
+    E --> H{Save or Complete?}
+    H -->|LƯU TẠM| I[Save as Draft<br/>Back to List]
+    H -->|HOÀN TẤT CHUYẾN| J[Confirm Popup]
+    J -->|Hoàn tất| K[Mark Complete<br/>Back to List]
+    J -->|Hủy| E
+
+    style B fill:#e3f2fd
+    style J fill:#fff3cd
+    style K fill:#d4edda
+```
+
+## Trip Data Model
+
+```mermaid
+erDiagram
+    TRIP_FORM {
+        string driverName "Read-only (from session)"
+        string advancePayment "VND, comma-formatted"
+        date pickupDate "Auto-set to today"
+        string pickupLocation "Picker: TPG, HL, KG, etc."
+        string pickupWeight "KG, comma-formatted"
+        date deliveryDate "Must be >= pickupDate"
+        string deliveryLocation "Picker: TBS, LHH, HT, etc."
+        string deliveryWeight "KG, max 1000kg diff from pickup"
+        string fuelNamPhat "VND"
+        string fuelHN "Liters"
+        string loadingFee "VND"
+        array additionalCosts "Dynamic list of name+amount+note"
+        string notes "Free text"
+    }
+```
 
 ## Features
 
-- Single-screen trip form — no auth, no friction
-- Driver selection, advance payment tracking
+### Core
+- **Driver session** — pick your name once, see only your trips
+- **Trip list** — recent trips (last 2 days) with pull-to-refresh
+- **In-place editing** — tap any trip to modify it (PUT, no duplicates)
+- **Draft / Complete lifecycle** — save progress, confirm when done
+- **Confirmation popup** — "Xác nhận hoàn tất chuyến?" before finalizing
+- **2-day edit window** — correct mistakes after completion
+
+### Trip Form
 - Pickup & delivery logging (date, location, weight in KG)
-- Fuel costs (Nam Phat in VND, HN in liters)
-- Loading/unloading fees, dynamic additional costs
-- Delivery date cannot be earlier than pickup date
-- Pickup/delivery weight difference capped at 1,000 KG
-- All currency fields formatted with comma separators (VND, integers only)
-- Save draft or complete trip
+- Fuel costs: Nam Phat (VND), HN (liters)
+- Loading/unloading fees (VND)
+- Dynamic additional costs (fines, tolls, medical, etc.)
+- Weight validation: pickup vs delivery difference capped at 1,000 KG
+- Delivery date auto-bumps if pickup date moves forward
+- All currency fields with comma separators (VND, integers only)
 
-## Architecture
+### Cross-Platform
+- Native `Alert.alert` on iOS/Android, `window.confirm`/`window.alert` on Web
+- Platform-aware keyboard avoidance
+- Safe area handling for notches and status bars
+
+## Project Structure
 
 ```
-[ Mobile App (this repo) ]
-   ↓
-[ API - FastAPI / Azure Function ]
-   ↓
-[ Postgres / Cosmos ]
-   ↓
-[ Blob Storage (images) ]
+TruckerMobile/
+├── App.tsx                     # Navigation state machine (3 screens)
+├── src/
+│   ├── DriverSelectScreen.tsx  # Screen 1: pick your name
+│   ├── TripListScreen.tsx      # Screen 2: recent trips + new/edit/delete
+│   ├── TripScreen.tsx          # Screen 3: trip form (create & edit)
+│   ├── api.ts                  # API client: submit, update, get, delete trips
+│   ├── alert.ts                # Cross-platform alert/confirm helpers
+│   ├── types.ts                # TypeScript interfaces, driver list, location codes
+│   ├── utils.ts                # Number formatting, ID generation
+│   ├── config.ts               # API endpoint & GPS config
+│   ├── theme.ts                # Color palette (Material Design 3 inspired)
+│   ├── PickerModal.tsx         # Bottom sheet picker (reusable)
+│   └── DatePickerModal.tsx     # Cross-platform date picker
+├── app.json                    # Expo config
+├── tsconfig.json               # TypeScript (strict mode)
+└── package.json                # Dependencies
 ```
+
+## Screen Navigation
+
+No external navigation library — uses a simple state machine in `App.tsx` for zero added bundle size:
+
+```mermaid
+stateDiagram-v2
+    [*] --> DriverSelect
+    DriverSelect --> TripList : onSelect(driver)
+    TripList --> DriverSelect : onBack
+    TripList --> TripForm_New : "Chuyến mới"
+    TripList --> TripForm_Edit : Tap existing trip
+    TripForm_New --> TripList : onSaved / onBack
+    TripForm_Edit --> TripList : onSaved / onBack
+```
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Framework | Expo SDK 54, React Native 0.77 |
+| Language | TypeScript (strict) |
+| Date Picker | @react-native-community/datetimepicker |
+| Safe Area | react-native-safe-area-context |
+| Icons | @expo/vector-icons (MaterialIcons) |
+| API | fetch (no axios — fewer deps) |
+| Navigation | State machine in App.tsx (no react-navigation) |
+| Styling | StyleSheet (no styled-components — RN native) |
 
 ## Getting Started
 
+### Prerequisites
+- Node.js 18+
+- Expo CLI (`npx expo`)
+
+### Run locally
 ```bash
 npm install
 npx expo start
 ```
 
-Scan the QR code with Expo Go on your phone.
+- Press `w` for web, `i` for iOS simulator, `a` for Android emulator
+- Or scan QR with Expo Go on your phone
 
-## Tech Stack
+### API Configuration
 
-- Expo SDK 54
-- React Native 0.77
-- TypeScript
-- @react-native-community/datetimepicker
-- react-native-safe-area-context
+Edit `src/config.ts`:
+```typescript
+const Config = {
+  apiBaseUrl: __DEV__
+    ? 'http://localhost:7071/api'    // Local Azure Functions
+    : 'https://nhutin-trucker-api.azurewebsites.net/api',  // Production
+  endpoint: '/trips',
+};
+```
+
+## Design Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| No react-navigation | 3 screens, linear flow — state machine is simpler and adds 0 KB to bundle |
+| No auth screen | Drivers share devices, SME context — name picker is sufficient identity |
+| Driver name as "session" | Prevents mid-form driver switching bugs; naturally separates trip data |
+| Cross-platform alert helper | `Alert.alert` is no-op on web; helper uses `window.confirm` as fallback |
+| No Redux/Zustand | Form state is local to TripScreen; trip list refetches on mount. No shared state needed |
+| Comma formatting | VND has no decimals — integer display with comma separators matches driver expectations |
+
+## Related Repos
+
+- **[TruckerMobileBackend](../TruckerMobileBackend/)** — Azure Function App REST API (Python, PostgreSQL)

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,18 +7,25 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
-  Alert,
   KeyboardAvoidingView,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from './theme';
-import { TripFormData, AdditionalCost, DRIVERS, PICKUP_LOCATIONS, DELIVERY_LOCATIONS } from './types';
+import { TripFormData, AdditionalCost, PICKUP_LOCATIONS, DELIVERY_LOCATIONS } from './types';
 import { formatNumber, parseNumber, generateId } from './utils';
 import { PickerModal } from './PickerModal';
 import { DatePickerModal } from './DatePickerModal';
-import { buildPayload, submitTrip } from './api';
+import { buildPayload, submitTrip, updateTrip, TripRecord } from './api';
+import { showAlert, showConfirm } from './alert';
+
+export interface TripScreenProps {
+  driverName: string;
+  editingTrip?: TripRecord | null;
+  onBack: () => void;
+  onSaved: () => void;
+}
 
 function SectionCard({ children }: { children: React.ReactNode }) {
   return <View style={styles.card}>{children}</View>;
@@ -90,9 +97,36 @@ function Input({
   );
 }
 
-export default function TripScreen() {
-  const [form, setForm] = useState<TripFormData>({
-    driverName: '',
+function tripRecordToForm(trip: TripRecord, driverName: string): TripFormData {
+  const fmtNum = (n: number) => n ? n.toLocaleString('en-US') : '';
+  let costs: { name: string; amountVnd: number; note: string }[] = [];
+  try {
+    costs = typeof trip.additional_costs === 'string'
+      ? JSON.parse(trip.additional_costs)
+      : trip.additional_costs;
+  } catch {}
+  return {
+    driverName,
+    advancePayment: fmtNum(trip.advance_payment),
+    pickupDate: new Date(trip.pickup_date),
+    pickupLocation: trip.pickup_location || PICKUP_LOCATIONS[0],
+    pickupWeight: fmtNum(trip.pickup_weight_kg),
+    deliveryDate: new Date(trip.delivery_date),
+    deliveryLocation: trip.delivery_location || DELIVERY_LOCATIONS[0],
+    deliveryWeight: fmtNum(trip.delivery_weight_kg),
+    fuelNamPhat: fmtNum(trip.fuel_nam_phat_vnd),
+    fuelHN: fmtNum(trip.fuel_hn_liters),
+    loadingFee: fmtNum(trip.loading_fee_vnd),
+    additionalCosts: Array.isArray(costs) && costs.length > 0
+      ? costs.map(c => ({ id: generateId(), name: c.name, amount: fmtNum(c.amountVnd), note: c.note }))
+      : [{ id: generateId(), name: '', amount: '', note: '' }],
+    notes: trip.notes || '',
+  };
+}
+
+function defaultForm(driverName: string): TripFormData {
+  return {
+    driverName,
     advancePayment: '2,000,000',
     pickupDate: new Date(),
     pickupLocation: PICKUP_LOCATIONS[0],
@@ -105,11 +139,19 @@ export default function TripScreen() {
     loadingFee: '',
     additionalCosts: [{ id: generateId(), name: '', amount: '', note: '' }],
     notes: '',
-  });
+  };
+}
+
+export default function TripScreen({ driverName, editingTrip, onBack, onSaved }: TripScreenProps) {
+  const isEditing = !!editingTrip;
+  const [tripId, setTripId] = useState<string | null>(editingTrip?.id ?? null);
+
+  const [form, setForm] = useState<TripFormData>(
+    editingTrip ? tripRecordToForm(editingTrip, driverName) : defaultForm(driverName),
+  );
 
   const [showPickupDate, setShowPickupDate] = useState(false);
   const [showDeliveryDate, setShowDeliveryDate] = useState(false);
-  const [showDriverPicker, setShowDriverPicker] = useState(false);
   const [showPickupLocationPicker, setShowPickupLocationPicker] = useState(false);
   const [showDeliveryLocationPicker, setShowDeliveryLocationPicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -167,48 +209,69 @@ export default function TripScreen() {
     setShowDeliveryDate(false);
   };
 
-  const handleSaveDraft = async () => {
+  const saveTrip = async (isDraft: boolean) => {
     setSubmitting(true);
     try {
-      const payload = buildPayload(form, true, null, null);
-      await submitTrip(payload);
-      Alert.alert('Lưu tạm', 'Chuyến đi đã được lưu tạm thành công!');
+      const payload = buildPayload(form, isDraft, null, null);
+      if (tripId) {
+        await updateTrip(tripId, payload);
+      } else {
+        const result = await submitTrip(payload);
+        setTripId(result.tripId);
+      }
+      return true;
     } catch {
-      Alert.alert('Lỗi', 'Không thể lưu tạm. Vui lòng thử lại.');
+      showAlert('Lỗi', 'Không thể lưu dữ liệu. Vui lòng thử lại.');
+      return false;
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleComplete = async () => {
-    if (!form.driverName) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng chọn tài xế.');
-      return;
+  const handleSaveDraft = async () => {
+    const ok = await saveTrip(true);
+    if (ok) {
+      showAlert('Lưu tạm', 'Chuyến đi đã được lưu tạm thành công!', () => onSaved());
     }
+  };
+
+  const doComplete = async () => {
+    const ok = await saveTrip(false);
+    if (ok) {
+      showAlert('Hoàn tất', 'Chuyến đi đã được hoàn tất!', () => onSaved());
+    }
+  };
+
+  const handleComplete = () => {
     const pickupKg = parseNumber(form.pickupWeight);
     const deliveryKg = parseNumber(form.deliveryWeight);
     if (pickupKg > 0 && deliveryKg > 0 && Math.abs(pickupKg - deliveryKg) > 1000) {
-      Alert.alert(
+      showAlert(
         'Sai số lượng',
         `Chênh lệch giữa lấy (${form.pickupWeight} kg) và giao (${form.deliveryWeight} kg) không được quá 1,000 kg.`
       );
       return;
     }
 
-    setSubmitting(true);
-    try {
-      const payload = buildPayload(form, false, null, null);
-      await submitTrip(payload);
-      Alert.alert('Hoàn tất', 'Chuyến đi đã được hoàn tất!');
-    } catch {
-      Alert.alert('Lỗi', 'Không thể gửi dữ liệu. Vui lòng thử lại.');
-    } finally {
-      setSubmitting(false);
-    }
+    showConfirm(
+      'Xác nhận hoàn tất chuyến',
+      `${form.pickupLocation} → ${form.deliveryLocation}\nBạn chắc chắn muốn hoàn tất chuyến này?`,
+      () => doComplete(),
+      'Hoàn tất',
+    );
   };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
+      {/* Header bar */}
+      <View style={styles.headerBar}>
+        <TouchableOpacity onPress={onBack} style={styles.backButton}>
+          <MaterialIcons name="arrow-back" size={24} color={Colors.onSurface} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>{isEditing ? 'Sửa chuyến' : 'Chuyến mới'}</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -222,12 +285,9 @@ export default function TripScreen() {
           <SectionCard>
             <SectionHeader icon="person" iconColor={Colors.primary} title="Thông tin tài xế" />
             <Label text="TÊN TÀI XẾ" />
-            <TouchableOpacity style={styles.input} onPress={() => setShowDriverPicker(true)}>
-              <Text style={form.driverName ? styles.inputText : styles.placeholderText}>
-                {form.driverName || 'Chọn tài xế...'}
-              </Text>
-              <MaterialIcons name="keyboard-arrow-down" size={20} color={Colors.outline} />
-            </TouchableOpacity>
+            <View style={[styles.input, { backgroundColor: Colors.slateLight }]}>
+              <Text style={styles.inputText}>{driverName}</Text>
+            </View>
 
             <Label text="TIỀN ỨNG TRƯỚC (VNĐ)" />
             <Input
@@ -423,14 +483,6 @@ export default function TripScreen() {
 
       {/* Picker Modals */}
       <PickerModal
-        visible={showDriverPicker}
-        onClose={() => setShowDriverPicker(false)}
-        title="Chọn tài xế"
-        options={DRIVERS}
-        selected={form.driverName}
-        onSelect={v => { updateForm('driverName', v); setShowDriverPicker(false); }}
-      />
-      <PickerModal
         visible={showPickupLocationPicker}
         onClose={() => setShowPickupLocationPicker(false)}
         title="Nơi lấy"
@@ -454,6 +506,28 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  headerBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.slateBorder,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.onSurface,
   },
   scrollView: {
     flex: 1,

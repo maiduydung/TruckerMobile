@@ -88,13 +88,65 @@ export function buildPayload(
   };
 }
 
-// ── API call ──
+// ── API calls ──
 
-export async function submitTrip(payload: TripPayload): Promise<Response> {
+export async function submitTrip(payload: TripPayload): Promise<{ tripId: string }> {
   const url = `${Config.apiBaseUrl}${Config.endpoint}`;
-  return fetch(url, {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  if (!res.ok) throw new Error(`POST failed: ${res.status}`);
+  return res.json();
+}
+
+export async function updateTrip(tripId: string, payload: TripPayload): Promise<void> {
+  const url = `${Config.apiBaseUrl}${Config.endpoint}/${tripId}`;
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`PUT failed: ${res.status}`);
+}
+
+export async function getTrips(driver: string, sinceDays: number = 2): Promise<TripRecord[]> {
+  const params = new URLSearchParams({
+    driver,
+    includeDrafts: 'true',
+    sinceDays: String(sinceDays),
+  });
+  const url = `${Config.apiBaseUrl}${Config.endpoint}?${params}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`GET failed: ${res.status}`);
+  const data = await res.json();
+  return data.trips;
+}
+
+export async function deleteTrip(tripId: string): Promise<void> {
+  const url = `${Config.apiBaseUrl}${Config.endpoint}/${tripId}`;
+  const res = await fetch(url, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`DELETE failed: ${res.status}`);
+}
+
+// ── Trip record from backend ──
+
+export interface TripRecord {
+  id: string;
+  driver_name: string;
+  advance_payment: number;
+  pickup_date: string;
+  pickup_location: string;
+  pickup_weight_kg: number;
+  delivery_date: string;
+  delivery_location: string;
+  delivery_weight_kg: number;
+  fuel_nam_phat_vnd: number;
+  fuel_hn_liters: number;
+  loading_fee_vnd: number;
+  additional_costs: string | { name: string; amountVnd: number; note: string }[];
+  notes: string;
+  is_draft: boolean;
+  submitted_at: string;
 }
