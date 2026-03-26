@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from './theme';
-import { TripFormData, AdditionalCost, PICKUP_LOCATIONS, DELIVERY_LOCATIONS } from './types';
+import { TripFormData, AdditionalCost, PICKUP_LOCATIONS, DELIVERY_LOCATIONS, COST_CATEGORIES } from './types';
 import { formatNumber, parseNumber, generateId } from './utils';
 import { PickerModal } from './PickerModal';
 import { DatePickerModal } from './DatePickerModal';
@@ -146,14 +146,27 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
   const isEditing = !!editingTrip;
   const [tripId, setTripId] = useState<string | null>(editingTrip?.id ?? null);
 
-  const [form, setForm] = useState<TripFormData>(
+  const [initialForm] = useState<TripFormData>(() =>
     editingTrip ? tripRecordToForm(editingTrip, driverName) : defaultForm(driverName),
   );
+  const [form, setForm] = useState<TripFormData>(initialForm);
 
   const [showPickupDate, setShowPickupDate] = useState(false);
   const [showDeliveryDate, setShowDeliveryDate] = useState(false);
   const [showPickupLocationPicker, setShowPickupLocationPicker] = useState(false);
   const [showDeliveryLocationPicker, setShowDeliveryLocationPicker] = useState(false);
+  const [costNamePickerId, setCostNamePickerId] = useState<string | null>(null);
+  const presetNames = COST_CATEGORIES.filter(cat => cat !== 'Khác');
+  const [customCostIds, setCustomCostIds] = useState<Set<string>>(() => {
+    // On load, detect which existing costs have custom (non-preset) names
+    const ids = new Set<string>();
+    initialForm.additionalCosts.forEach(c => {
+      if (c.name !== '' && !presetNames.includes(c.name)) {
+        ids.add(c.id);
+      }
+    });
+    return ids;
+  });
   const [submitting, setSubmitting] = useState(false);
 
 
@@ -182,6 +195,11 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
       ...prev,
       additionalCosts: prev.additionalCosts.filter(c => c.id !== id),
     }));
+    setCustomCostIds(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   }, []);
 
   const handleAdvancePayment = (text: string) => {
@@ -396,49 +414,67 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
               </TouchableOpacity>
             </View>
 
-            {form.additionalCosts.map((cost) => (
-              <View key={cost.id} style={styles.additionalCostCard}>
-                {form.additionalCosts.length > 1 && (
-                  <TouchableOpacity
-                    style={styles.removeCostButton}
-                    onPress={() => removeAdditionalCost(cost.id)}
-                  >
-                    <MaterialIcons name="close" size={16} color={Colors.error} />
-                  </TouchableOpacity>
-                )}
-                <View style={styles.additionalCostRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.smallLabel}>TÊN CHI PHÍ</Text>
-                    <TextInput
-                      style={styles.smallInput}
-                      placeholder="Ví dụ: Cầu đường"
-                      placeholderTextColor={Colors.outline}
-                      value={cost.name}
-                      onChangeText={v => updateAdditionalCost(cost.id, 'name', v)}
-                    />
+            {form.additionalCosts.map((cost) => {
+              const isCustom = customCostIds.has(cost.id);
+              const displayName = isCustom ? 'Khác' : cost.name;
+              return (
+                <View key={cost.id} style={styles.additionalCostCard}>
+                  {form.additionalCosts.length > 1 && (
+                    <TouchableOpacity
+                      style={styles.removeCostButton}
+                      onPress={() => removeAdditionalCost(cost.id)}
+                    >
+                      <MaterialIcons name="close" size={16} color={Colors.error} />
+                    </TouchableOpacity>
+                  )}
+                  <View style={styles.additionalCostRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.smallLabel}>TÊN CHI PHÍ</Text>
+                      <TouchableOpacity
+                        style={[styles.smallInput, styles.smallPicker]}
+                        onPress={() => setCostNamePickerId(cost.id)}
+                      >
+                        <Text style={(isCustom || cost.name) ? styles.smallPickerText : styles.smallPickerPlaceholder}>
+                          {displayName || 'Chọn chi phí'}
+                        </Text>
+                        <MaterialIcons name="keyboard-arrow-down" size={18} color={Colors.outline} />
+                      </TouchableOpacity>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.smallLabel}>SỐ TIỀN (VNĐ)</Text>
+                      <TextInput
+                        style={[styles.smallInput, { color: Colors.primary, fontWeight: '700' }]}
+                        placeholder="0"
+                        placeholderTextColor={Colors.outline}
+                        value={cost.amount}
+                        onChangeText={v => updateAdditionalCost(cost.id, 'amount', formatNumber(v))}
+                        keyboardType="number-pad"
+                      />
+                    </View>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.smallLabel}>SỐ TIỀN (VNĐ)</Text>
-                    <TextInput
-                      style={[styles.smallInput, { color: Colors.primary, fontWeight: '700' }]}
-                      placeholder="0"
-                      placeholderTextColor={Colors.outline}
-                      value={cost.amount}
-                      onChangeText={v => updateAdditionalCost(cost.id, 'amount', formatNumber(v))}
-                      keyboardType="number-pad"
-                    />
-                  </View>
+                  {isCustom && (
+                    <>
+                      <Text style={styles.smallLabel}>TÊN CHI PHÍ KHÁC</Text>
+                      <TextInput
+                        style={styles.smallInput}
+                        placeholder="Nhập tên chi phí..."
+                        placeholderTextColor={Colors.outline}
+                        value={cost.name}
+                        onChangeText={v => updateAdditionalCost(cost.id, 'name', v)}
+                      />
+                    </>
+                  )}
+                  <Text style={styles.smallLabel}>GHI CHÚ PHÍ</Text>
+                  <TextInput
+                    style={styles.smallInput}
+                    placeholder="Nhập ghi chú cho khoản phí này..."
+                    placeholderTextColor={Colors.outline}
+                    value={cost.note}
+                    onChangeText={v => updateAdditionalCost(cost.id, 'note', v)}
+                  />
                 </View>
-                <Text style={styles.smallLabel}>GHI CHÚ PHÍ</Text>
-                <TextInput
-                  style={styles.smallInput}
-                  placeholder="Nhập ghi chú cho khoản phí này..."
-                  placeholderTextColor={Colors.outline}
-                  value={cost.note}
-                  onChangeText={v => updateAdditionalCost(cost.id, 'note', v)}
-                />
-              </View>
-            ))}
+              );
+            })}
 
             {/* Notes */}
             <Label text="GHI CHÚ" />
@@ -497,6 +533,39 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
         options={DELIVERY_LOCATIONS}
         selected={form.deliveryLocation}
         onSelect={v => { updateForm('deliveryLocation', v); setShowDeliveryLocationPicker(false); }}
+      />
+      <PickerModal
+        visible={costNamePickerId !== null}
+        onClose={() => setCostNamePickerId(null)}
+        title="Chọn loại chi phí"
+        options={COST_CATEGORIES}
+        selected={
+          costNamePickerId
+            ? customCostIds.has(costNamePickerId)
+              ? 'Khác'
+              : form.additionalCosts.find(c => c.id === costNamePickerId)?.name ?? ''
+            : ''
+        }
+        onSelect={v => {
+          if (costNamePickerId) {
+            if (v === 'Khác') {
+              setCustomCostIds(prev => new Set(prev).add(costNamePickerId));
+              // Keep existing custom name if already custom, otherwise clear
+              if (!customCostIds.has(costNamePickerId)) {
+                updateAdditionalCost(costNamePickerId, 'name', '');
+              }
+            } else {
+              // Remove from custom set if it was there
+              setCustomCostIds(prev => {
+                const next = new Set(prev);
+                next.delete(costNamePickerId);
+                return next;
+              });
+              updateAdditionalCost(costNamePickerId, 'name', v);
+            }
+          }
+          setCostNamePickerId(null);
+        }}
       />
     </SafeAreaView>
   );
@@ -657,6 +726,20 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
     color: Colors.onSurface,
+  },
+  smallPicker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  smallPickerText: {
+    fontSize: 14,
+    color: Colors.onSurface,
+    fontWeight: '600',
+  },
+  smallPickerPlaceholder: {
+    fontSize: 14,
+    color: Colors.outline,
   },
   bottomBar: {
     flexDirection: 'row',

@@ -30,3 +30,14 @@ export const DRIVERS = [
 export const PICKUP_LOCATIONS = ['TPG', 'HL', 'KG', 'DQ', 'TLLT', 'TLTB', 'YP', 'X'];
 
 export const DELIVERY_LOCATIONS = ['TBS', 'LHH', 'HT', 'NQ', 'TPH', 'DTT', 'BSLA', 'X', 'VTL', 'TDL'];
+
+export const COST_CATEGORIES = [
+  'Xe xúc',
+  'Lò hơi',
+  'Cân xe',
+  'Bồi dưỡng cân',
+  'Bảo vệ',
+  'Vá vỏ',
+  'Rửa xe',
+  'Khác',
+];
