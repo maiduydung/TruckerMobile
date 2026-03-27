@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, createElement } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   Modal,
   StyleSheet,
@@ -39,38 +38,76 @@ export function DatePickerModal({ visible, value, minimumDate, onConfirm, onCanc
     if (visible) setTempDate(value);
   }, [visible, value]);
 
-  // ── Web: HTML date input in a modal ──
+  // ── Web: pure HTML elements to avoid RN Web swallowing clicks ──
   if (Platform.OS === 'web') {
     if (!visible) return null;
-    return (
-      <Modal visible={visible} transparent animationType="slide">
-        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onCancel}>
-          <View style={styles.sheet}>
-            <View style={styles.header}>
-              <TouchableOpacity onPress={onCancel}>
-                <Text style={styles.cancelText}>Huỷ</Text>
-              </TouchableOpacity>
-              <Text style={styles.title}>{title}</Text>
-              <TouchableOpacity onPress={() => onConfirm(tempDate)}>
-                <Text style={styles.doneText}>Xong</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.webInputContainer}>
-              <TextInput
-                style={styles.webDateInput}
-                value={formatDateInput(tempDate)}
-                onChangeText={(text) => {
-                  const parsed = new Date(text + 'T00:00:00');
-                  if (!isNaN(parsed.getTime())) setTempDate(parsed);
-                }}
-                // @ts-ignore – web-only props
-                type="date"
-                min={minimumDate ? formatDateInput(minimumDate) : undefined}
-              />
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+    return createElement('div', {
+      onClick: (e: any) => { if (e.target === e.currentTarget) onCancel(); },
+      style: {
+        position: 'fixed' as const,
+        top: 0, left: 0, right: 0, bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        display: 'flex',
+        alignItems: 'flex-end',
+        justifyContent: 'center',
+        zIndex: 9999,
+      },
+    },
+      createElement('div', {
+        onClick: (e: any) => e.stopPropagation(),
+        style: {
+          width: '100%',
+          backgroundColor: Colors.white,
+          borderTopLeftRadius: 20,
+          borderTopRightRadius: 20,
+          paddingBottom: 40,
+        },
+      },
+        // Header row
+        createElement('div', {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '14px 20px',
+            borderBottom: `1px solid ${Colors.slateBorder}`,
+          },
+        },
+          createElement('span', {
+            onClick: onCancel,
+            style: { fontSize: 15, color: Colors.slateText, cursor: 'pointer' },
+          }, 'Huỷ'),
+          createElement('span', {
+            style: { fontSize: 16, fontWeight: '700', color: Colors.onSurface },
+          }, title),
+          createElement('span', {
+            onClick: () => onConfirm(tempDate),
+            style: { fontSize: 15, fontWeight: '700', color: Colors.primary, cursor: 'pointer' },
+          }, 'Xong'),
+        ),
+        // Date input
+        createElement('div', {
+          style: { padding: 20, display: 'flex', justifyContent: 'center' },
+        },
+          createElement('input', {
+            type: 'date',
+            value: formatDateInput(tempDate),
+            min: minimumDate ? formatDateInput(minimumDate) : undefined,
+            onChange: (e: any) => {
+              const parsed = new Date(e.target.value + 'T00:00:00');
+              if (!isNaN(parsed.getTime())) setTempDate(parsed);
+            },
+            style: {
+              fontSize: 18,
+              padding: 12,
+              border: `1px solid ${Colors.outlineVariant}`,
+              borderRadius: 10,
+              width: '100%',
+              textAlign: 'center' as const,
+            },
+          }),
+        ),
+      ),
     );
   }
 
@@ -98,7 +135,7 @@ export function DatePickerModal({ visible, value, minimumDate, onConfirm, onCanc
   return (
     <Modal visible={visible} transparent animationType="slide">
       <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onCancel}>
-        <View style={styles.sheet}>
+        <View style={styles.sheet} onStartShouldSetResponder={() => true}>
           <View style={styles.header}>
             <TouchableOpacity onPress={onCancel}>
               <Text style={styles.cancelText}>Huỷ</Text>
@@ -158,18 +195,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: Colors.primary,
-  },
-  webInputContainer: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  webDateInput: {
-    fontSize: 18,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: Colors.outlineVariant,
-    borderRadius: 10,
-    width: '100%',
-    textAlign: 'center',
   },
 });

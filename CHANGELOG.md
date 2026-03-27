@@ -2,6 +2,12 @@
 
 All notable changes to the NhuTin Trucker Mobile app.
 
+## [0.3.1] - 2026-03-27
+
+### Fixed
+- **Date picker unusable on Web** — replaced React Native `Modal`/`TextInput` with pure HTML elements so the native browser date picker actually works on Chrome/mobile browsers.
+- **Date picker dismissing on iOS** — touches on the spinner were bubbling up to the overlay and closing the modal before the user could pick a date.
+
 ## [0.3.0] - 2026-03-26
 
 ### Added
