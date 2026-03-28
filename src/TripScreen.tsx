@@ -99,6 +99,7 @@ function Input({
 
 function tripRecordToForm(trip: TripRecord, driverName: string): TripFormData {
   const fmtNum = (n: number) => n ? n.toLocaleString('en-US') : '';
+  const fmtVnd = (n: number) => n ? fmtNum(Math.round(n / 1000)) : '';
   let costs: { name: string; amountVnd: number; note: string }[] = [];
   try {
     costs = typeof trip.additional_costs === 'string'
@@ -107,18 +108,18 @@ function tripRecordToForm(trip: TripRecord, driverName: string): TripFormData {
   } catch {}
   return {
     driverName,
-    advancePayment: fmtNum(trip.advance_payment),
+    advancePayment: fmtVnd(trip.advance_payment),
     pickupDate: new Date(trip.pickup_date),
     pickupLocation: trip.pickup_location || PICKUP_LOCATIONS[0],
     pickupWeight: fmtNum(trip.pickup_weight_kg),
     deliveryDate: new Date(trip.delivery_date),
     deliveryLocation: trip.delivery_location || DELIVERY_LOCATIONS[0],
     deliveryWeight: fmtNum(trip.delivery_weight_kg),
-    fuelNamPhat: fmtNum(trip.fuel_nam_phat_vnd),
+    fuelNamPhat: fmtVnd(trip.fuel_nam_phat_vnd),
     fuelHN: fmtNum(trip.fuel_hn_liters),
-    loadingFee: fmtNum(trip.loading_fee_vnd),
+    loadingFee: fmtVnd(trip.loading_fee_vnd),
     additionalCosts: Array.isArray(costs) && costs.length > 0
-      ? costs.map(c => ({ id: generateId(), name: c.name, amount: fmtNum(c.amountVnd), note: c.note }))
+      ? costs.map(c => ({ id: generateId(), name: c.name, amount: fmtVnd(c.amountVnd), note: c.note }))
       : [{ id: generateId(), name: '', amount: '', note: '' }],
     notes: trip.notes || '',
   };
@@ -127,7 +128,7 @@ function tripRecordToForm(trip: TripRecord, driverName: string): TripFormData {
 function defaultForm(driverName: string): TripFormData {
   return {
     driverName,
-    advancePayment: '2,000,000',
+    advancePayment: '2,000',
     pickupDate: new Date(),
     pickupLocation: PICKUP_LOCATIONS[0],
     pickupWeight: '',
@@ -307,7 +308,7 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
               <Text style={styles.inputText}>{driverName}</Text>
             </View>
 
-            <Label text="TIỀN ỨNG TRƯỚC (VNĐ)" />
+            <Label text="TIỀN ỨNG TRƯỚC (đơn vị: 1,000 VNĐ)" />
             <Input
               placeholder="0"
               value={form.advancePayment}
@@ -379,7 +380,7 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
           {/* Costs & Fuel */}
           <SectionCard>
             <SectionHeader icon="receipt-long" iconColor={Colors.secondary} title="CHI PHÍ & DẦU" />
-            <Label text="DẦU NAM PHÁT (VNĐ)" />
+            <Label text="DẦU NAM PHÁT (đơn vị: 1,000 VNĐ)" />
             <Input
               placeholder="0"
               value={form.fuelNamPhat}
@@ -396,7 +397,7 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
               keyboardType="number-pad"
             />
 
-            <Label text="PHÍ BẾN BÃI / BỐC XẾP (VNĐ)" />
+            <Label text="PHÍ BẾN BÃI / BỐC XẾP (đơn vị: 1,000 VNĐ)" />
             <Input
               placeholder="0"
               value={form.loadingFee}
@@ -441,7 +442,7 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
                       </TouchableOpacity>
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.smallLabel}>SỐ TIỀN (VNĐ)</Text>
+                      <Text style={styles.smallLabel}>SỐ TIỀN (x1,000đ)</Text>
                       <TextInput
                         style={[styles.smallInput, { color: Colors.primary, fontWeight: '700' }]}
                         placeholder="0"

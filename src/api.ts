@@ -61,7 +61,7 @@ export function buildPayload(
 ): TripPayload {
   return {
     driverName: form.driverName,
-    advancePayment: parseNumber(form.advancePayment),
+    advancePayment: parseNumber(form.advancePayment) * 1000,
 
     pickupDate: form.pickupDate.toISOString(),
     pickupLocation: form.pickupLocation,
@@ -73,12 +73,12 @@ export function buildPayload(
     deliveryWeightKg: parseNumber(form.deliveryWeight),
     deliveryGps,
 
-    fuelNamPhatVnd: parseNumber(form.fuelNamPhat),
+    fuelNamPhatVnd: parseNumber(form.fuelNamPhat) * 1000,
     fuelHnLiters: parseNumber(form.fuelHN),
-    loadingFeeVnd: parseNumber(form.loadingFee),
+    loadingFeeVnd: parseNumber(form.loadingFee) * 1000,
     additionalCosts: form.additionalCosts.map((c) => ({
       name: c.name,
-      amountVnd: parseNumber(c.amount),
+      amountVnd: parseNumber(c.amount) * 1000,
       note: c.note,
     })),
 

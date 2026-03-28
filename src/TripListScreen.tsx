@@ -74,7 +74,7 @@ export default function TripListScreen({ driver, onBack, onNewTrip, onEditTrip }
 
   const formatVnd = (amount: number) => {
     if (!amount) return '';
-    return amount.toLocaleString('en-US') + 'đ';
+    return Math.round(amount / 1000).toLocaleString('en-US') + ' (x1,000đ)';
   };
 
   const renderTrip = ({ item }: { item: TripRecord }) => {
