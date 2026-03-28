@@ -2,6 +2,17 @@
 
 All notable changes to the NhuTin Trucker Mobile app.
 
+## [0.4.0] - 2026-03-28
+
+### Added
+- **Dư đầu (opening balance)** input field in the driver info section.
+- **Tổng kết (summary) card** at the bottom of the trip form with itemized cost breakdown, total cost, and closing balance (dư cuối = dư đầu − tổng chi phí). Negative balances shown in red with minus sign.
+- New API fields: `openingBalance`, `totalCost`, `closingBalance` — sent to backend and stored in DB.
+
+### Changed
+- **All VND inputs now in units of 1,000 VNĐ** — drivers type `50` instead of `50,000`. Labels updated to show "đơn vị: 1,000 VNĐ". Values multiplied by 1,000 before API submission, divided by 1,000 when loading.
+- Trip list cost display updated to match 1,000 VNĐ unit.
+
 ## [0.3.1] - 2026-03-27
 
 ### Fixed

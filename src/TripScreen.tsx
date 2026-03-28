@@ -109,6 +109,7 @@ function tripRecordToForm(trip: TripRecord, driverName: string): TripFormData {
   return {
     driverName,
     advancePayment: fmtVnd(trip.advance_payment),
+    openingBalance: fmtVnd(trip.opening_balance),
     pickupDate: new Date(trip.pickup_date),
     pickupLocation: trip.pickup_location || PICKUP_LOCATIONS[0],
     pickupWeight: fmtNum(trip.pickup_weight_kg),
@@ -129,6 +130,7 @@ function defaultForm(driverName: string): TripFormData {
   return {
     driverName,
     advancePayment: '2,000',
+    openingBalance: '',
     pickupDate: new Date(),
     pickupLocation: PICKUP_LOCATIONS[0],
     pickupWeight: '',
@@ -316,6 +318,15 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
               keyboardType="number-pad"
               style={{ color: Colors.primary, fontWeight: '700' }}
             />
+
+            <Label text="DƯ ĐẦU (đơn vị: 1,000 VNĐ)" />
+            <Input
+              placeholder="0"
+              value={form.openingBalance}
+              onChangeText={v => updateForm('openingBalance', formatNumber(v))}
+              keyboardType="number-pad"
+              style={{ color: Colors.tertiary, fontWeight: '700' }}
+            />
           </SectionCard>
 
           {/* Pickup */}
@@ -488,6 +499,52 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
               multiline
             />
           </SectionCard>
+
+          {/* Summary */}
+          {(() => {
+            const totalCost = parseNumber(form.fuelNamPhat) +
+              parseNumber(form.loadingFee) +
+              form.additionalCosts.reduce((s, c) => s + parseNumber(c.amount), 0);
+            const closingBalance = parseNumber(form.openingBalance) - totalCost;
+            const fmtSigned = (n: number) => {
+              const prefix = n < 0 ? '-' : '';
+              return prefix + Math.abs(n).toLocaleString('en-US');
+            };
+            const fuelNP = parseNumber(form.fuelNamPhat);
+            const loading = parseNumber(form.loadingFee);
+            const items: { label: string; value: number }[] = [];
+            if (fuelNP) items.push({ label: 'Dầu Nam Phát', value: fuelNP });
+            if (loading) items.push({ label: 'Bến bãi / Bốc xếp', value: loading });
+            form.additionalCosts.forEach(c => {
+              const v = parseNumber(c.amount);
+              if (v && c.name) items.push({ label: c.name, value: v });
+            });
+            return (
+              <SectionCard>
+                <SectionHeader icon="calculate" iconColor={Colors.secondary} title="TỔNG KẾT" />
+                {items.map((item, i) => (
+                  <View key={i} style={styles.breakdownRow}>
+                    <Text style={styles.breakdownLabel}>{item.label}</Text>
+                    <Text style={styles.breakdownValue}>{item.value.toLocaleString('en-US')}</Text>
+                  </View>
+                ))}
+                <View style={[styles.summaryRow, { borderTopWidth: 1, borderTopColor: Colors.slateBorder, paddingTop: 8, marginTop: 4 }]}>
+                  <Text style={styles.summaryLabel}>TỔNG CHI PHÍ (x1,000đ)</Text>
+                  <Text style={styles.summaryValue}>
+                    {totalCost.toLocaleString('en-US')}
+                  </Text>
+                </View>
+                <View style={[styles.summaryRow, { borderTopWidth: 1, borderTopColor: Colors.slateBorder, paddingTop: 8 }]}>
+                  <Text style={styles.summaryLabel}>DƯ CUỐI (x1,000đ)</Text>
+                  <Text style={[styles.summaryValue, {
+                    color: closingBalance < 0 ? Colors.error : Colors.tertiary
+                  }]}>
+                    {fmtSigned(closingBalance)}
+                  </Text>
+                </View>
+              </SectionCard>
+            );
+          })()}
         </ScrollView>
 
         {/* Bottom Action Bar */}
@@ -782,5 +839,36 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: Colors.white,
+  },
+  breakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 3,
+  },
+  breakdownLabel: {
+    fontSize: 13,
+    color: Colors.outline,
+  },
+  breakdownValue: {
+    fontSize: 13,
+    color: Colors.onSurface,
+    fontWeight: '600',
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  summaryLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.onSurfaceVariant,
+  },
+  summaryValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.primary,
   },
 });

@@ -14,6 +14,7 @@ export interface TripFormData {
   deliveryDate: Date;
   deliveryLocation: string;
   deliveryWeight: string;
+  openingBalance: string;
   fuelNamPhat: string;
   fuelHN: string;
   loadingFee: string;

@@ -21,6 +21,9 @@ export interface TripPayload {
   deliveryWeightKg: number;
   deliveryGps: GpsCoordinates | null;
 
+  // Balance
+  openingBalance: number;
+
   // Costs
   fuelNamPhatVnd: number;
   fuelHnLiters: number;
@@ -30,6 +33,8 @@ export interface TripPayload {
     amountVnd: number;
     note: string;
   }[];
+  totalCost: number;
+  closingBalance: number;
 
   // Meta
   notes: string;
@@ -43,6 +48,7 @@ export function buildPayload(
   form: {
     driverName: string;
     advancePayment: string;
+    openingBalance: string;
     pickupDate: Date;
     pickupLocation: string;
     pickupWeight: string;
@@ -62,6 +68,7 @@ export function buildPayload(
   return {
     driverName: form.driverName,
     advancePayment: parseNumber(form.advancePayment) * 1000,
+    openingBalance: parseNumber(form.openingBalance) * 1000,
 
     pickupDate: form.pickupDate.toISOString(),
     pickupLocation: form.pickupLocation,
@@ -81,6 +88,19 @@ export function buildPayload(
       amountVnd: parseNumber(c.amount) * 1000,
       note: c.note,
     })),
+    totalCost: (() => {
+      const fuel = parseNumber(form.fuelNamPhat) * 1000;
+      const loading = parseNumber(form.loadingFee) * 1000;
+      const additional = form.additionalCosts.reduce((s, c) => s + parseNumber(c.amount) * 1000, 0);
+      return fuel + loading + additional;
+    })(),
+    closingBalance: (() => {
+      const opening = parseNumber(form.openingBalance) * 1000;
+      const fuel = parseNumber(form.fuelNamPhat) * 1000;
+      const loading = parseNumber(form.loadingFee) * 1000;
+      const additional = form.additionalCosts.reduce((s, c) => s + parseNumber(c.amount) * 1000, 0);
+      return opening - (fuel + loading + additional);
+    })(),
 
     notes: form.notes,
     isDraft,
@@ -146,6 +166,9 @@ export interface TripRecord {
   fuel_hn_liters: number;
   loading_fee_vnd: number;
   additional_costs: string | { name: string; amountVnd: number; note: string }[];
+  opening_balance: number;
+  total_cost: number;
+  closing_balance: number;
   notes: string;
   is_draft: boolean;
   submitted_at: string;
