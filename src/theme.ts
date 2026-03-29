@@ -21,9 +21,3 @@ export const Colors = {
   slateText: '#64748b',
   error: '#ba1a1a',
 };
-
-export const Fonts = {
-  regular: 'System',
-  medium: 'System',
-  bold: 'System',
-};

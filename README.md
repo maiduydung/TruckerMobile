@@ -183,4 +183,4 @@ const Config = {
 
 ## Related Repos
 
-- **[TruckerMobileBackend](../TruckerMobileBackend/)** — Azure Function App REST API (Python, PostgreSQL)
+- **[TruckerMobileBackend](https://github.com/maiduydung/TruckerMobileBackend)** — Azure Function App REST API (Python, PostgreSQL)
