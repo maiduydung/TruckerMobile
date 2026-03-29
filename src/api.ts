@@ -1,6 +1,7 @@
 import Config from './config';
 import { GpsCoordinates } from './gps';
 import { parseNumber } from './utils';
+import { TripFormData, FIXED_COSTS } from './types';
 
 // ── Payload sent to Azure Function / Container App ──
 
@@ -42,33 +43,30 @@ export interface TripPayload {
   submittedAt: string;         // ISO 8601
 }
 
+// ── Helper: sum all costs from form (in 1000 VND units) ──
+
+export function sumFormCosts(form: TripFormData): number {
+  const fuel = parseNumber(form.fuelNamPhat);
+  const loading = parseNumber(form.loadingFee);
+  const additional = FIXED_COSTS.reduce((s, c) => s + parseNumber(form[c.key] as string), 0);
+  return fuel + loading + additional;
+}
+
 // ── Build payload from form state ──
 
 export function buildPayload(
-  form: {
-    driverName: string;
-    advancePayment: string;
-    openingBalance: string;
-    pickupDate: Date;
-    pickupLocation: string;
-    pickupWeight: string;
-    deliveryDate: Date;
-    deliveryLocation: string;
-    deliveryWeight: string;
-    fuelNamPhat: string;
-    fuelHN: string;
-    loadingFee: string;
-    additionalCosts: { name: string; amount: string; note: string }[];
-    notes: string;
-  },
+  form: TripFormData,
   isDraft: boolean,
   pickupGps: GpsCoordinates | null,
   deliveryGps: GpsCoordinates | null,
 ): TripPayload {
+  const totalCost = sumFormCosts(form) * 1000;
+  const openingBalance = parseNumber(form.openingBalance) * 1000;
+
   return {
     driverName: form.driverName,
     advancePayment: parseNumber(form.advancePayment) * 1000,
-    openingBalance: parseNumber(form.openingBalance) * 1000,
+    openingBalance,
 
     pickupDate: form.pickupDate.toISOString(),
     pickupLocation: form.pickupLocation,
@@ -83,24 +81,15 @@ export function buildPayload(
     fuelNamPhatVnd: parseNumber(form.fuelNamPhat) * 1000,
     fuelHnLiters: parseNumber(form.fuelHN),
     loadingFeeVnd: parseNumber(form.loadingFee) * 1000,
-    additionalCosts: form.additionalCosts.map((c) => ({
-      name: c.name,
-      amountVnd: parseNumber(c.amount) * 1000,
-      note: c.note,
-    })),
-    totalCost: (() => {
-      const fuel = parseNumber(form.fuelNamPhat) * 1000;
-      const loading = parseNumber(form.loadingFee) * 1000;
-      const additional = form.additionalCosts.reduce((s, c) => s + parseNumber(c.amount) * 1000, 0);
-      return fuel + loading + additional;
-    })(),
-    closingBalance: (() => {
-      const opening = parseNumber(form.openingBalance) * 1000;
-      const fuel = parseNumber(form.fuelNamPhat) * 1000;
-      const loading = parseNumber(form.loadingFee) * 1000;
-      const additional = form.additionalCosts.reduce((s, c) => s + parseNumber(c.amount) * 1000, 0);
-      return opening - (fuel + loading + additional);
-    })(),
+    additionalCosts: FIXED_COSTS
+      .map(c => ({
+        name: c.label,
+        amountVnd: parseNumber(form[c.key] as string) * 1000,
+        note: c.key === 'costKhac' ? form.costKhacNote : '',
+      }))
+      .filter(c => c.amountVnd > 0),
+    totalCost,
+    closingBalance: openingBalance - totalCost,
 
     notes: form.notes,
     isDraft,

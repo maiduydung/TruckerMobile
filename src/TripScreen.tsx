@@ -13,11 +13,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from './theme';
-import { TripFormData, AdditionalCost, PICKUP_LOCATIONS, DELIVERY_LOCATIONS, COST_CATEGORIES } from './types';
-import { formatNumber, parseNumber, generateId } from './utils';
+import { TripFormData, FIXED_COSTS, PICKUP_LOCATIONS, DELIVERY_LOCATIONS } from './types';
+import { formatNumber, parseNumber } from './utils';
 import { PickerModal } from './PickerModal';
 import { DatePickerModal } from './DatePickerModal';
-import { buildPayload, submitTrip, updateTrip, TripRecord } from './api';
+import { buildPayload, submitTrip, updateTrip, sumFormCosts, TripRecord } from './api';
 import { showAlert, showConfirm } from './alert';
 
 export interface TripScreenProps {
@@ -97,15 +97,37 @@ function Input({
   );
 }
 
+// Map name→key for loading from API
+const COST_NAME_TO_KEY: Record<string, keyof TripFormData> = {};
+FIXED_COSTS.forEach(c => { COST_NAME_TO_KEY[c.label] = c.key; });
+
 function tripRecordToForm(trip: TripRecord, driverName: string): TripFormData {
   const fmtNum = (n: number) => n ? n.toLocaleString('en-US') : '';
   const fmtVnd = (n: number) => n ? fmtNum(Math.round(n / 1000)) : '';
+
   let costs: { name: string; amountVnd: number; note: string }[] = [];
   try {
     costs = typeof trip.additional_costs === 'string'
       ? JSON.parse(trip.additional_costs)
       : trip.additional_costs;
   } catch {}
+
+  // Start with empty cost fields
+  const costFields: Record<string, string> = {};
+  FIXED_COSTS.forEach(c => { costFields[c.key] = ''; });
+  let costKhacNote = '';
+
+  // Fill from API data
+  if (Array.isArray(costs)) {
+    costs.forEach(c => {
+      const key = COST_NAME_TO_KEY[c.name];
+      if (key) {
+        costFields[key as string] = fmtVnd(c.amountVnd);
+        if (key === 'costKhac') costKhacNote = c.note || '';
+      }
+    });
+  }
+
   return {
     driverName,
     advancePayment: fmtVnd(trip.advance_payment),
@@ -119,9 +141,8 @@ function tripRecordToForm(trip: TripRecord, driverName: string): TripFormData {
     fuelNamPhat: fmtVnd(trip.fuel_nam_phat_vnd),
     fuelHN: fmtNum(trip.fuel_hn_liters),
     loadingFee: fmtVnd(trip.loading_fee_vnd),
-    additionalCosts: Array.isArray(costs) && costs.length > 0
-      ? costs.map(c => ({ id: generateId(), name: c.name, amount: fmtVnd(c.amountVnd), note: c.note }))
-      : [{ id: generateId(), name: '', amount: '', note: '' }],
+    ...costFields as any,
+    costKhacNote,
     notes: trip.notes || '',
   };
 }
@@ -129,7 +150,7 @@ function tripRecordToForm(trip: TripRecord, driverName: string): TripFormData {
 function defaultForm(driverName: string): TripFormData {
   return {
     driverName,
-    advancePayment: '2,000',
+    advancePayment: '',
     openingBalance: '',
     pickupDate: new Date(),
     pickupLocation: PICKUP_LOCATIONS[0],
@@ -140,7 +161,16 @@ function defaultForm(driverName: string): TripFormData {
     fuelNamPhat: '',
     fuelHN: '',
     loadingFee: '',
-    additionalCosts: [{ id: generateId(), name: '', amount: '', note: '' }],
+    costXeXuc: '',
+    costLoHoi: '',
+    costCanXe: '',
+    costCom: '',
+    costBoiDuongCan: '',
+    costBaoVe: '',
+    costVaVo: '',
+    costRuaXe: '',
+    costKhac: '',
+    costKhacNote: '',
     notes: '',
   };
 }
@@ -149,60 +179,18 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
   const isEditing = !!editingTrip;
   const [tripId, setTripId] = useState<string | null>(editingTrip?.id ?? null);
 
-  const [initialForm] = useState<TripFormData>(() =>
+  const [form, setForm] = useState<TripFormData>(() =>
     editingTrip ? tripRecordToForm(editingTrip, driverName) : defaultForm(driverName),
   );
-  const [form, setForm] = useState<TripFormData>(initialForm);
 
   const [showPickupDate, setShowPickupDate] = useState(false);
   const [showDeliveryDate, setShowDeliveryDate] = useState(false);
   const [showPickupLocationPicker, setShowPickupLocationPicker] = useState(false);
   const [showDeliveryLocationPicker, setShowDeliveryLocationPicker] = useState(false);
-  const [costNamePickerId, setCostNamePickerId] = useState<string | null>(null);
-  const presetNames = COST_CATEGORIES.filter(cat => cat !== 'Khác');
-  const [customCostIds, setCustomCostIds] = useState<Set<string>>(() => {
-    // On load, detect which existing costs have custom (non-preset) names
-    const ids = new Set<string>();
-    initialForm.additionalCosts.forEach(c => {
-      if (c.name !== '' && !presetNames.includes(c.name)) {
-        ids.add(c.id);
-      }
-    });
-    return ids;
-  });
   const [submitting, setSubmitting] = useState(false);
-
 
   const updateForm = useCallback(<K extends keyof TripFormData>(key: K, value: TripFormData[K]) => {
     setForm(prev => ({ ...prev, [key]: value }));
-  }, []);
-
-  const updateAdditionalCost = useCallback((id: string, field: keyof AdditionalCost, value: string) => {
-    setForm(prev => ({
-      ...prev,
-      additionalCosts: prev.additionalCosts.map(c =>
-        c.id === id ? { ...c, [field]: value } : c
-      ),
-    }));
-  }, []);
-
-  const addAdditionalCost = useCallback(() => {
-    setForm(prev => ({
-      ...prev,
-      additionalCosts: [...prev.additionalCosts, { id: generateId(), name: '', amount: '', note: '' }],
-    }));
-  }, []);
-
-  const removeAdditionalCost = useCallback((id: string) => {
-    setForm(prev => ({
-      ...prev,
-      additionalCosts: prev.additionalCosts.filter(c => c.id !== id),
-    }));
-    setCustomCostIds(prev => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
   }, []);
 
   const handleAdvancePayment = (text: string) => {
@@ -218,7 +206,6 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
 
   const handlePickupDateConfirm = (date: Date) => {
     updateForm('pickupDate', date);
-    // If delivery date is before new pickup date, bump it
     if (form.deliveryDate < date) {
       updateForm('deliveryDate', date);
     }
@@ -416,80 +403,40 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
               keyboardType="number-pad"
               style={{ color: Colors.primary, fontWeight: '700' }}
             />
+          </SectionCard>
 
-            {/* Additional Costs */}
-            <View style={styles.additionalCostsHeader}>
-              <Text style={styles.additionalCostsTitle}>CHI PHÍ PHÁT SINH</Text>
-              <TouchableOpacity style={styles.addButton} onPress={addAdditionalCost}>
-                <MaterialIcons name="add-circle" size={16} color={Colors.primary} />
-                <Text style={styles.addButtonText}>Thêm chi phí</Text>
-              </TouchableOpacity>
-            </View>
+          {/* Fixed Cost Items */}
+          <SectionCard>
+            <SectionHeader icon="list-alt" iconColor={Colors.secondary} title="CHI PHÍ PHÁT SINH (x1,000đ)" />
+            {FIXED_COSTS.map(({ key, label }) => (
+              <View key={key} style={{ marginTop: 8 }}>
+                <Label text={label.toUpperCase()} />
+                <Input
+                  placeholder="0"
+                  value={form[key] as string}
+                  onChangeText={v => updateForm(key, formatNumber(v))}
+                  keyboardType="number-pad"
+                  style={{ color: Colors.primary, fontWeight: '700' }}
+                />
+                {key === 'costKhac' && parseNumber(form.costKhac) > 0 && (
+                  <>
+                    <Label text="GHI CHÚ CHI PHÍ KHÁC" />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Nhập mô tả chi phí khác..."
+                      placeholderTextColor={Colors.outline}
+                      value={form.costKhacNote}
+                      onChangeText={v => updateForm('costKhacNote', v)}
+                    />
+                  </>
+                )}
+              </View>
+            ))}
+          </SectionCard>
 
-            {form.additionalCosts.map((cost) => {
-              const isCustom = customCostIds.has(cost.id);
-              const displayName = isCustom ? 'Khác' : cost.name;
-              return (
-                <View key={cost.id} style={styles.additionalCostCard}>
-                  {form.additionalCosts.length > 1 && (
-                    <TouchableOpacity
-                      style={styles.removeCostButton}
-                      onPress={() => removeAdditionalCost(cost.id)}
-                    >
-                      <MaterialIcons name="close" size={16} color={Colors.error} />
-                    </TouchableOpacity>
-                  )}
-                  <View style={styles.additionalCostRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.smallLabel}>TÊN CHI PHÍ</Text>
-                      <TouchableOpacity
-                        style={[styles.smallInput, styles.smallPicker]}
-                        onPress={() => setCostNamePickerId(cost.id)}
-                      >
-                        <Text style={(isCustom || cost.name) ? styles.smallPickerText : styles.smallPickerPlaceholder}>
-                          {displayName || 'Chọn chi phí'}
-                        </Text>
-                        <MaterialIcons name="keyboard-arrow-down" size={18} color={Colors.outline} />
-                      </TouchableOpacity>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.smallLabel}>SỐ TIỀN (x1,000đ)</Text>
-                      <TextInput
-                        style={[styles.smallInput, { color: Colors.primary, fontWeight: '700' }]}
-                        placeholder="0"
-                        placeholderTextColor={Colors.outline}
-                        value={cost.amount}
-                        onChangeText={v => updateAdditionalCost(cost.id, 'amount', formatNumber(v))}
-                        keyboardType="number-pad"
-                      />
-                    </View>
-                  </View>
-                  {isCustom && (
-                    <>
-                      <Text style={styles.smallLabel}>TÊN CHI PHÍ KHÁC</Text>
-                      <TextInput
-                        style={styles.smallInput}
-                        placeholder="Nhập tên chi phí..."
-                        placeholderTextColor={Colors.outline}
-                        value={cost.name}
-                        onChangeText={v => updateAdditionalCost(cost.id, 'name', v)}
-                      />
-                    </>
-                  )}
-                  <Text style={styles.smallLabel}>GHI CHÚ PHÍ</Text>
-                  <TextInput
-                    style={styles.smallInput}
-                    placeholder="Nhập ghi chú cho khoản phí này..."
-                    placeholderTextColor={Colors.outline}
-                    value={cost.note}
-                    onChangeText={v => updateAdditionalCost(cost.id, 'note', v)}
-                  />
-                </View>
-              );
-            })}
-
-            {/* Notes */}
-            <Label text="GHI CHÚ" />
+          {/* Notes */}
+          <SectionCard>
+            <SectionHeader icon="notes" iconColor={Colors.outline} title="GHI CHÚ" />
             <TextInput
               style={[styles.input, { height: 80, textAlignVertical: 'top', paddingTop: 12 }]}
               placeholder="Nhập ghi chú chuyến đi..."
@@ -502,9 +449,7 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
 
           {/* Summary */}
           {(() => {
-            const totalCost = parseNumber(form.fuelNamPhat) +
-              parseNumber(form.loadingFee) +
-              form.additionalCosts.reduce((s, c) => s + parseNumber(c.amount), 0);
+            const totalCost = sumFormCosts(form);
             const closingBalance = parseNumber(form.openingBalance) - totalCost;
             const fmtSigned = (n: number) => {
               const prefix = n < 0 ? '-' : '';
@@ -515,9 +460,9 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
             const items: { label: string; value: number }[] = [];
             if (fuelNP) items.push({ label: 'Dầu Nam Phát', value: fuelNP });
             if (loading) items.push({ label: 'Bến bãi / Bốc xếp', value: loading });
-            form.additionalCosts.forEach(c => {
-              const v = parseNumber(c.amount);
-              if (v && c.name) items.push({ label: c.name, value: v });
+            FIXED_COSTS.forEach(c => {
+              const v = parseNumber(form[c.key] as string);
+              if (v) items.push({ label: c.label, value: v });
             });
             return (
               <SectionCard>
@@ -591,39 +536,6 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
         options={DELIVERY_LOCATIONS}
         selected={form.deliveryLocation}
         onSelect={v => { updateForm('deliveryLocation', v); setShowDeliveryLocationPicker(false); }}
-      />
-      <PickerModal
-        visible={costNamePickerId !== null}
-        onClose={() => setCostNamePickerId(null)}
-        title="Chọn loại chi phí"
-        options={COST_CATEGORIES}
-        selected={
-          costNamePickerId
-            ? customCostIds.has(costNamePickerId)
-              ? 'Khác'
-              : form.additionalCosts.find(c => c.id === costNamePickerId)?.name ?? ''
-            : ''
-        }
-        onSelect={v => {
-          if (costNamePickerId) {
-            if (v === 'Khác') {
-              setCustomCostIds(prev => new Set(prev).add(costNamePickerId));
-              // Keep existing custom name if already custom, otherwise clear
-              if (!customCostIds.has(costNamePickerId)) {
-                updateAdditionalCost(costNamePickerId, 'name', '');
-              }
-            } else {
-              // Remove from custom set if it was there
-              setCustomCostIds(prev => {
-                const next = new Set(prev);
-                next.delete(costNamePickerId);
-                return next;
-              });
-              updateAdditionalCost(costNamePickerId, 'name', v);
-            }
-          }
-          setCostNamePickerId(null);
-        }}
       />
     </SafeAreaView>
   );
@@ -702,6 +614,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginLeft: 4,
     marginTop: 4,
+    marginBottom: 4,
   },
   input: {
     backgroundColor: Colors.surfaceContainerHigh,
@@ -718,86 +631,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.onSurface,
     fontWeight: '600',
-  },
-  placeholderText: {
-    fontSize: 15,
-    color: Colors.outline,
-    fontWeight: '600',
-  },
-  additionalCostsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: Colors.slateBorder,
-  },
-  additionalCostsTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.onSurfaceVariant,
-    letterSpacing: 0.5,
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  addButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-  additionalCostCard: {
-    backgroundColor: Colors.slateLight,
-    borderRadius: 14,
-    padding: 12,
-    gap: 8,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: Colors.slateBorder,
-  },
-  removeCostButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    zIndex: 1,
-    padding: 4,
-  },
-  additionalCostRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  smallLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: Colors.onSurfaceVariant,
-    textTransform: 'uppercase',
-    marginLeft: 4,
-    marginBottom: 4,
-  },
-  smallInput: {
-    backgroundColor: Colors.white,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: Colors.onSurface,
-  },
-  smallPicker: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  smallPickerText: {
-    fontSize: 14,
-    color: Colors.onSurface,
-    fontWeight: '600',
-  },
-  smallPickerPlaceholder: {
-    fontSize: 14,
-    color: Colors.outline,
   },
   bottomBar: {
     flexDirection: 'row',

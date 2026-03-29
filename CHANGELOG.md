@@ -2,6 +2,18 @@
 
 All notable changes to the NhuTin Trucker Mobile app.
 
+## [0.5.0] - 2026-03-29
+
+### Changed
+- **Fixed cost categories** — replaced dynamic add/remove cost list with 9 dedicated input fields: Xe xúc, Lò hơi, Cân xe, Cơm, Bồi dưỡng cân, Bảo vệ, Vá vỏ, Rửa xe, Khác. Each has its own labeled input box.
+- "Khác" shows a note field when amount > 0.
+- Default tiền ứng trước changed to 0 (was 2,000).
+- Improved label-to-input spacing across all form fields.
+- Notes moved to its own section card.
+
+### Removed
+- Dynamic additional costs (add/remove rows, category picker modal).
+
 ## [0.4.0] - 2026-03-28
 
 ### Added
