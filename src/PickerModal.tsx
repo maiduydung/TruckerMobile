@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   Modal,
   FlatList,
@@ -17,15 +18,61 @@ interface PickerModalProps {
   options: string[];
   selected: string;
   onSelect: (value: string) => void;
+  onAdd?: (value: string) => void;
 }
 
-export function PickerModal({ visible, onClose, title, options, selected, onSelect }: PickerModalProps) {
+export function PickerModal({ visible, onClose, title, options, selected, onSelect, onAdd }: PickerModalProps) {
+  const [adding, setAdding] = useState(false);
+  const [newValue, setNewValue] = useState('');
+
+  const handleAdd = () => {
+    const trimmed = newValue.trim().toUpperCase();
+    if (trimmed && !options.includes(trimmed) && onAdd) {
+      onAdd(trimmed);
+    }
+    setNewValue('');
+    setAdding(false);
+  };
+
+  const handleClose = () => {
+    setAdding(false);
+    setNewValue('');
+    onClose();
+  };
+
   return (
     <Modal visible={visible} transparent animationType="slide">
-      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
-        <View style={styles.sheet}>
+      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={handleClose}>
+        <View style={styles.sheet} onStartShouldSetResponder={() => true}>
           <View style={styles.handle} />
-          <Text style={styles.title}>{title}</Text>
+          <View style={styles.header}>
+            <Text style={styles.title}>{title}</Text>
+            {onAdd && !adding && (
+              <TouchableOpacity style={styles.addButton} onPress={() => setAdding(true)}>
+                <MaterialIcons name="add-circle-outline" size={18} color={Colors.primary} />
+                <Text style={styles.addButtonText}>Thêm</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {adding && (
+            <View style={styles.addRow}>
+              <TextInput
+                style={styles.addInput}
+                placeholder="Nhập mã địa điểm..."
+                placeholderTextColor={Colors.outline}
+                value={newValue}
+                onChangeText={setNewValue}
+                autoFocus
+                autoCapitalize="characters"
+              />
+              <TouchableOpacity style={styles.addConfirm} onPress={handleAdd}>
+                <Text style={styles.addConfirmText}>OK</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setAdding(false); setNewValue(''); }}>
+                <MaterialIcons name="close" size={20} color={Colors.outline} />
+              </TouchableOpacity>
+            </View>
+          )}
           <FlatList
             data={options}
             keyExtractor={item => item}
@@ -71,12 +118,54 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 16,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginBottom: 8,
+  },
   title: {
     fontSize: 16,
     fontWeight: '700',
     color: Colors.onSurface,
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  addButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  addRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 20,
     marginBottom: 8,
+    gap: 8,
+  },
+  addInput: {
+    flex: 1,
+    backgroundColor: Colors.surfaceContainerHigh,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: Colors.onSurface,
+  },
+  addConfirm: {
+    backgroundColor: Colors.primary,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  addConfirmText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.white,
   },
   option: {
     flexDirection: 'row',

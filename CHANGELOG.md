@@ -2,6 +2,11 @@
 
 All notable changes to the NhuTin Trucker Mobile app.
 
+## [0.5.1] - 2026-03-29
+
+### Added
+- **Custom locations** — truckers can add new pickup/delivery location codes via "+ Thêm" button in the location picker. Custom locations are persisted on the device via AsyncStorage and auto-selected on creation.
+
 ## [0.5.0] - 2026-03-29
 
 ### Changed

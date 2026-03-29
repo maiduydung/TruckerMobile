@@ -54,4 +54,4 @@ A React Native (Expo) mobile app for truck drivers at a Vietnamese logistics SME
 ## Companion repos
 
 - **TruckerMobileBackend** — Azure Function App REST API (Python, PostgreSQL)
-- **Dashboard** — planned, not yet built
+- **TruckerDashboard** — Svelte SPA for the owner to view trips, export Excel/PDF/CSV. Deployed on Azure Static Web Apps.

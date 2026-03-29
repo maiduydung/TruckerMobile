@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,10 @@ import { PickerModal } from './PickerModal';
 import { DatePickerModal } from './DatePickerModal';
 import { buildPayload, submitTrip, updateTrip, sumFormCosts, TripRecord } from './api';
 import { showAlert, showConfirm } from './alert';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const CUSTOM_PICKUP_KEY = 'custom_pickup_locations';
+const CUSTOM_DELIVERY_KEY = 'custom_delivery_locations';
 
 export interface TripScreenProps {
   driverName: string;
@@ -188,6 +192,29 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
   const [showPickupLocationPicker, setShowPickupLocationPicker] = useState(false);
   const [showDeliveryLocationPicker, setShowDeliveryLocationPicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [customPickup, setCustomPickup] = useState<string[]>([]);
+  const [customDelivery, setCustomDelivery] = useState<string[]>([]);
+
+  useEffect(() => {
+    AsyncStorage.getItem(CUSTOM_PICKUP_KEY).then(v => v && setCustomPickup(JSON.parse(v)));
+    AsyncStorage.getItem(CUSTOM_DELIVERY_KEY).then(v => v && setCustomDelivery(JSON.parse(v)));
+  }, []);
+
+  const addCustomPickup = useCallback((loc: string) => {
+    setCustomPickup(prev => {
+      const next = [...prev, loc];
+      AsyncStorage.setItem(CUSTOM_PICKUP_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const addCustomDelivery = useCallback((loc: string) => {
+    setCustomDelivery(prev => {
+      const next = [...prev, loc];
+      AsyncStorage.setItem(CUSTOM_DELIVERY_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
   const updateForm = useCallback(<K extends keyof TripFormData>(key: K, value: TripFormData[K]) => {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -525,17 +552,19 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
         visible={showPickupLocationPicker}
         onClose={() => setShowPickupLocationPicker(false)}
         title="Nơi lấy"
-        options={PICKUP_LOCATIONS}
+        options={[...PICKUP_LOCATIONS, ...customPickup]}
         selected={form.pickupLocation}
         onSelect={v => { updateForm('pickupLocation', v); setShowPickupLocationPicker(false); }}
+        onAdd={v => { addCustomPickup(v); updateForm('pickupLocation', v); setShowPickupLocationPicker(false); }}
       />
       <PickerModal
         visible={showDeliveryLocationPicker}
         onClose={() => setShowDeliveryLocationPicker(false)}
         title="Nơi giao"
-        options={DELIVERY_LOCATIONS}
+        options={[...DELIVERY_LOCATIONS, ...customDelivery]}
         selected={form.deliveryLocation}
         onSelect={v => { updateForm('deliveryLocation', v); setShowDeliveryLocationPicker(false); }}
+        onAdd={v => { addCustomDelivery(v); updateForm('deliveryLocation', v); setShowDeliveryLocationPicker(false); }}
       />
     </SafeAreaView>
   );
