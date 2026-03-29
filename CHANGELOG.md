@@ -2,6 +2,11 @@
 
 All notable changes to the NhuTin Trucker Mobile app.
 
+## [0.5.2] - 2026-03-29
+
+### Added
+- **Test suite** (`tests/`) — Jest + ts-jest tests for `formatNumber`, `parseNumber` utilities and `DRIVERS`, `PICKUP_LOCATIONS`, `DELIVERY_LOCATIONS`, `FIXED_COSTS` constants (25 tests).
+
 ## [0.5.1] - 2026-03-29
 
 ### Added
