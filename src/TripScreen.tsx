@@ -477,12 +477,14 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
           {/* Summary */}
           {(() => {
             const totalCost = sumFormCosts(form);
-            const closingBalance = parseNumber(form.openingBalance) - totalCost;
+            const fuelNPExcluded = parseNumber(form.fuelNamPhat);
+            const totalCostDisplay = totalCost - fuelNPExcluded;
+            const closingBalance = parseNumber(form.openingBalance) - totalCostDisplay;
             const fmtSigned = (n: number) => {
               const prefix = n < 0 ? '-' : '';
               return prefix + Math.abs(n).toLocaleString('en-US');
             };
-            const fuelNP = parseNumber(form.fuelNamPhat);
+            const fuelNP = fuelNPExcluded;
             const loading = parseNumber(form.loadingFee);
             const items: { label: string; value: number }[] = [];
             if (fuelNP) items.push({ label: 'Dầu Nam Phát', value: fuelNP });
@@ -500,10 +502,13 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
                     <Text style={styles.breakdownValue}>{item.value.toLocaleString('en-US')}</Text>
                   </View>
                 ))}
+                {fuelNP > 0 && (
+                  <Text style={styles.excludeNote}>* Loại trừ dầu Nam Phát / dầu HN</Text>
+                )}
                 <View style={[styles.summaryRow, { borderTopWidth: 1, borderTopColor: Colors.slateBorder, paddingTop: 8, marginTop: 4 }]}>
                   <Text style={styles.summaryLabel}>TỔNG CHI PHÍ (x1,000đ)</Text>
                   <Text style={styles.summaryValue}>
-                    {totalCost.toLocaleString('en-US')}
+                    {totalCostDisplay.toLocaleString('en-US')}
                   </Text>
                 </View>
                 <View style={[styles.summaryRow, { borderTopWidth: 1, borderTopColor: Colors.slateBorder, paddingTop: 8 }]}>
@@ -707,6 +712,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 3,
+  },
+  excludeNote: {
+    fontSize: 11,
+    color: Colors.outline,
+    fontStyle: 'italic',
+    marginTop: 2,
+    marginBottom: 2,
   },
   breakdownLabel: {
     fontSize: 13,

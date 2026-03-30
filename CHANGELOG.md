@@ -2,6 +2,11 @@
 
 All notable changes to the NhuTin Trucker Mobile app.
 
+## [0.5.3] - 2026-03-31
+
+### Changed
+- **Dầu Nam Phát excluded from totals** — "Dầu Nam Phát" still shown in the cost breakdown but is no longer counted in TỔNG CHI PHÍ or DƯ CUỐI. A note "* Loại trừ dầu Nam Phát / dầu HN" appears below the breakdown when a fuel amount is present.
+
 ## [0.5.2] - 2026-03-29
 
 ### Added
