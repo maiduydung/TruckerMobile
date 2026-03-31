@@ -1,13 +1,19 @@
+import type { GpsCoordinates } from './gps';
+
+export interface Stop {
+  seq: number;
+  type: 'pickup' | 'delivery';
+  location: string;
+  date: Date;
+  weight: string;
+  gps: GpsCoordinates | null;
+}
+
 export interface TripFormData {
   driverName: string;
   advancePayment: string;
   openingBalance: string;
-  pickupDate: Date;
-  pickupLocation: string;
-  pickupWeight: string;
-  deliveryDate: Date;
-  deliveryLocation: string;
-  deliveryWeight: string;
+  stops: Stop[];
   fuelNamPhat: string;
   fuelHN: string;
   loadingFee: string;

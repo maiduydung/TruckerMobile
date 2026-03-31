@@ -1,29 +1,26 @@
 import Config from './config';
 import { GpsCoordinates } from './gps';
 import { parseNumber } from './utils';
-import { TripFormData, FIXED_COSTS } from './types';
+import { TripFormData, FIXED_COSTS, Stop, PICKUP_LOCATIONS, DELIVERY_LOCATIONS } from './types';
+
+// ── Stop payload (sent to API) ──
+
+export interface StopPayload {
+  seq: number;
+  type: 'pickup' | 'delivery';
+  location: string;
+  date: string;           // ISO 8601
+  weightKg: number;
+  gps: GpsCoordinates | null;
+}
 
 // ── Payload sent to Azure Function / Container App ──
 
 export interface TripPayload {
-  // Driver
   driverName: string;
   advancePayment: number;
-
-  // Pickup
-  pickupDate: string;          // ISO 8601
-  pickupLocation: string;
-  pickupWeightKg: number;
-  pickupGps: GpsCoordinates | null;
-
-  // Delivery
-  deliveryDate: string;        // ISO 8601
-  deliveryLocation: string;
-  deliveryWeightKg: number;
-  deliveryGps: GpsCoordinates | null;
-
-  // Balance
   openingBalance: number;
+  stops: StopPayload[];
 
   // Costs
   fuelNamPhatVnd: number;
@@ -40,7 +37,7 @@ export interface TripPayload {
   // Meta
   notes: string;
   isDraft: boolean;
-  submittedAt: string;         // ISO 8601
+  submittedAt: string;     // ISO 8601
 }
 
 // ── Helper: sum all costs from form (in 1000 VND units) ──
@@ -57,8 +54,6 @@ export function sumFormCosts(form: TripFormData): number {
 export function buildPayload(
   form: TripFormData,
   isDraft: boolean,
-  pickupGps: GpsCoordinates | null,
-  deliveryGps: GpsCoordinates | null,
 ): TripPayload {
   const totalCost = sumFormCosts(form) * 1000;
   const openingBalance = parseNumber(form.openingBalance) * 1000;
@@ -68,15 +63,14 @@ export function buildPayload(
     advancePayment: parseNumber(form.advancePayment) * 1000,
     openingBalance,
 
-    pickupDate: form.pickupDate.toISOString(),
-    pickupLocation: form.pickupLocation,
-    pickupWeightKg: parseNumber(form.pickupWeight),
-    pickupGps,
-
-    deliveryDate: form.deliveryDate.toISOString(),
-    deliveryLocation: form.deliveryLocation,
-    deliveryWeightKg: parseNumber(form.deliveryWeight),
-    deliveryGps,
+    stops: form.stops.map(s => ({
+      seq: s.seq,
+      type: s.type,
+      location: s.location,
+      date: s.date.toISOString(),
+      weightKg: parseNumber(s.weight),
+      gps: s.gps,
+    })),
 
     fuelNamPhatVnd: parseNumber(form.fuelNamPhat) * 1000,
     fuelHnLiters: parseNumber(form.fuelHN),
@@ -139,18 +133,24 @@ export async function deleteTrip(tripId: string): Promise<void> {
   if (!res.ok) throw new Error(`DELETE failed: ${res.status}`);
 }
 
+// ── Stop record from backend (snake_case JSONB) ──
+
+export interface StopRecord {
+  seq: number;
+  type: 'pickup' | 'delivery';
+  location: string;
+  date: string;
+  weightKg: number;
+  gps: GpsCoordinates | null;
+}
+
 // ── Trip record from backend ──
 
 export interface TripRecord {
   id: string;
   driver_name: string;
   advance_payment: number;
-  pickup_date: string;
-  pickup_location: string;
-  pickup_weight_kg: number;
-  delivery_date: string;
-  delivery_location: string;
-  delivery_weight_kg: number;
+  stops: string | StopRecord[];
   fuel_nam_phat_vnd: number;
   fuel_hn_liters: number;
   loading_fee_vnd: number;
@@ -161,4 +161,39 @@ export interface TripRecord {
   notes: string;
   is_draft: boolean;
   submitted_at: string;
+}
+
+// ── Helpers for parsing stops from TripRecord ──
+
+export function parseStops(raw: string | StopRecord[]): StopRecord[] {
+  try {
+    const arr = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+export function stopsToFormStops(records: StopRecord[]): Stop[] {
+  const fmtNum = (n: number) => n ? n.toLocaleString('en-US') : '';
+  return records.map(r => ({
+    seq: r.seq,
+    type: r.type,
+    location: r.location || (r.type === 'pickup' ? PICKUP_LOCATIONS[0] : DELIVERY_LOCATIONS[0]),
+    date: new Date(r.date),
+    weight: fmtNum(r.weightKg),
+    gps: r.gps,
+  }));
+}
+
+export function stopsRouteSummary(raw: string | StopRecord[]): { pickups: string; deliveries: string; totalPickupKg: number; totalDeliveryKg: number } {
+  const stops = parseStops(raw);
+  const pickupStops = stops.filter(s => s.type === 'pickup');
+  const deliveryStops = stops.filter(s => s.type === 'delivery');
+  return {
+    pickups: pickupStops.map(s => s.location).join(', '),
+    deliveries: deliveryStops.map(s => s.location).join(', '),
+    totalPickupKg: pickupStops.reduce((sum, s) => sum + (s.weightKg || 0), 0),
+    totalDeliveryKg: deliveryStops.reduce((sum, s) => sum + (s.weightKg || 0), 0),
+  };
 }

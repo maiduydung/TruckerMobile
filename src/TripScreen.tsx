@@ -13,11 +13,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from './theme';
-import { TripFormData, FIXED_COSTS, PICKUP_LOCATIONS, DELIVERY_LOCATIONS } from './types';
+import { TripFormData, FIXED_COSTS, PICKUP_LOCATIONS, DELIVERY_LOCATIONS, Stop } from './types';
 import { formatNumber, parseNumber } from './utils';
 import { PickerModal } from './PickerModal';
 import { DatePickerModal } from './DatePickerModal';
-import { buildPayload, submitTrip, updateTrip, sumFormCosts, TripRecord } from './api';
+import { buildPayload, submitTrip, updateTrip, sumFormCosts, TripRecord, parseStops, stopsToFormStops } from './api';
 import { showAlert, showConfirm } from './alert';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -132,16 +132,20 @@ function tripRecordToForm(trip: TripRecord, driverName: string): TripFormData {
     });
   }
 
+  // Parse stops from backend
+  const stopRecords = parseStops(trip.stops);
+  const formStops = stopRecords.length > 0
+    ? stopsToFormStops(stopRecords)
+    : [
+        { seq: 1, type: 'pickup' as const, location: PICKUP_LOCATIONS[0], date: new Date(), weight: '', gps: null },
+        { seq: 2, type: 'delivery' as const, location: DELIVERY_LOCATIONS[0], date: new Date(), weight: '', gps: null },
+      ];
+
   return {
     driverName,
     advancePayment: fmtVnd(trip.advance_payment),
     openingBalance: fmtVnd(trip.opening_balance),
-    pickupDate: new Date(trip.pickup_date),
-    pickupLocation: trip.pickup_location || PICKUP_LOCATIONS[0],
-    pickupWeight: fmtNum(trip.pickup_weight_kg),
-    deliveryDate: new Date(trip.delivery_date),
-    deliveryLocation: trip.delivery_location || DELIVERY_LOCATIONS[0],
-    deliveryWeight: fmtNum(trip.delivery_weight_kg),
+    stops: formStops,
     fuelNamPhat: fmtVnd(trip.fuel_nam_phat_vnd),
     fuelHN: fmtNum(trip.fuel_hn_liters),
     loadingFee: fmtVnd(trip.loading_fee_vnd),
@@ -156,12 +160,10 @@ function defaultForm(driverName: string): TripFormData {
     driverName,
     advancePayment: '',
     openingBalance: '',
-    pickupDate: new Date(),
-    pickupLocation: PICKUP_LOCATIONS[0],
-    pickupWeight: '',
-    deliveryDate: new Date(),
-    deliveryLocation: DELIVERY_LOCATIONS[0],
-    deliveryWeight: '',
+    stops: [
+      { seq: 1, type: 'pickup', location: PICKUP_LOCATIONS[0], date: new Date(), weight: '', gps: null },
+      { seq: 2, type: 'delivery', location: DELIVERY_LOCATIONS[0], date: new Date(), weight: '', gps: null },
+    ],
     fuelNamPhat: '',
     fuelHN: '',
     loadingFee: '',
@@ -187,10 +189,8 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
     editingTrip ? tripRecordToForm(editingTrip, driverName) : defaultForm(driverName),
   );
 
-  const [showPickupDate, setShowPickupDate] = useState(false);
-  const [showDeliveryDate, setShowDeliveryDate] = useState(false);
-  const [showPickupLocationPicker, setShowPickupLocationPicker] = useState(false);
-  const [showDeliveryLocationPicker, setShowDeliveryLocationPicker] = useState(false);
+  const [activeStopIndex, setActiveStopIndex] = useState<number | null>(null);
+  const [activeModal, setActiveModal] = useState<'date' | 'location' | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [customPickup, setCustomPickup] = useState<string[]>([]);
   const [customDelivery, setCustomDelivery] = useState<string[]>([]);
@@ -220,6 +220,39 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
     setForm(prev => ({ ...prev, [key]: value }));
   }, []);
 
+  // ── Stop management ──
+
+  const updateStop = useCallback((index: number, field: keyof Stop, value: any) => {
+    setForm(prev => {
+      const stops = [...prev.stops];
+      stops[index] = { ...stops[index], [field]: value };
+      return { ...prev, stops };
+    });
+  }, []);
+
+  const addStop = useCallback((type: 'pickup' | 'delivery') => {
+    setForm(prev => {
+      const newSeq = prev.stops.length + 1;
+      const defaultLocation = type === 'pickup' ? PICKUP_LOCATIONS[0] : DELIVERY_LOCATIONS[0];
+      const newStop: Stop = {
+        seq: newSeq,
+        type,
+        location: defaultLocation,
+        date: new Date(),
+        weight: '',
+        gps: null,
+      };
+      return { ...prev, stops: [...prev.stops, newStop] };
+    });
+  }, []);
+
+  const removeStop = useCallback((index: number) => {
+    setForm(prev => {
+      const stops = prev.stops.filter((_, i) => i !== index).map((s, i) => ({ ...s, seq: i + 1 }));
+      return { ...prev, stops };
+    });
+  }, []);
+
   const handleAdvancePayment = (text: string) => {
     updateForm('advancePayment', formatNumber(text));
   };
@@ -231,23 +264,40 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
     return `${mm}/${dd}/${yyyy}`;
   };
 
-  const handlePickupDateConfirm = (date: Date) => {
-    updateForm('pickupDate', date);
-    if (form.deliveryDate < date) {
-      updateForm('deliveryDate', date);
+  const handleDateConfirm = (date: Date) => {
+    if (activeStopIndex !== null) {
+      updateStop(activeStopIndex, 'date', date);
     }
-    setShowPickupDate(false);
+    setActiveModal(null);
+    setActiveStopIndex(null);
   };
 
-  const handleDeliveryDateConfirm = (date: Date) => {
-    updateForm('deliveryDate', date);
-    setShowDeliveryDate(false);
+  const handleLocationSelect = (loc: string) => {
+    if (activeStopIndex !== null) {
+      updateStop(activeStopIndex, 'location', loc);
+    }
+    setActiveModal(null);
+    setActiveStopIndex(null);
+  };
+
+  const handleLocationAdd = (loc: string) => {
+    if (activeStopIndex !== null) {
+      const stop = form.stops[activeStopIndex];
+      if (stop.type === 'pickup') {
+        addCustomPickup(loc);
+      } else {
+        addCustomDelivery(loc);
+      }
+      updateStop(activeStopIndex, 'location', loc);
+    }
+    setActiveModal(null);
+    setActiveStopIndex(null);
   };
 
   const saveTrip = async (isDraft: boolean) => {
     setSubmitting(true);
     try {
-      const payload = buildPayload(form, isDraft, null, null);
+      const payload = buildPayload(form, isDraft);
       if (tripId) {
         await updateTrip(tripId, payload);
       } else {
@@ -278,23 +328,43 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
   };
 
   const handleComplete = () => {
-    const pickupKg = parseNumber(form.pickupWeight);
-    const deliveryKg = parseNumber(form.deliveryWeight);
-    if (pickupKg > 0 && deliveryKg > 0 && Math.abs(pickupKg - deliveryKg) > 1000) {
+    const totalPickup = form.stops
+      .filter(s => s.type === 'pickup')
+      .reduce((sum, s) => sum + parseNumber(s.weight), 0);
+    const totalDelivery = form.stops
+      .filter(s => s.type === 'delivery')
+      .reduce((sum, s) => sum + parseNumber(s.weight), 0);
+
+    if (totalPickup > 0 && totalDelivery > 0 && Math.abs(totalPickup - totalDelivery) > 1000) {
       showAlert(
         'Sai số lượng',
-        `Chênh lệch giữa lấy (${form.pickupWeight} kg) và giao (${form.deliveryWeight} kg) không được quá 1,000 kg.`
+        `Chênh lệch giữa tổng lấy (${totalPickup.toLocaleString('en-US')} kg) và tổng giao (${totalDelivery.toLocaleString('en-US')} kg) không được quá 1,000 kg.`
       );
       return;
     }
 
+    const pickupLocs = form.stops.filter(s => s.type === 'pickup').map(s => s.location).join(', ');
+    const deliveryLocs = form.stops.filter(s => s.type === 'delivery').map(s => s.location).join(', ');
+
     showConfirm(
       'Xác nhận hoàn tất chuyến',
-      `${form.pickupLocation} → ${form.deliveryLocation}\nBạn chắc chắn muốn hoàn tất chuyến này?`,
+      `${pickupLocs} → ${deliveryLocs}\nBạn chắc chắn muốn hoàn tất chuyến này?`,
       () => doComplete(),
       'Hoàn tất',
     );
   };
+
+  // Helpers for rendering
+  const pickupStops = form.stops.filter(s => s.type === 'pickup');
+  const deliveryStops = form.stops.filter(s => s.type === 'delivery');
+
+  // Active stop for modals
+  const activeStop = activeStopIndex !== null ? form.stops[activeStopIndex] : null;
+  const activeLocationOptions = activeStop
+    ? activeStop.type === 'pickup'
+      ? [...PICKUP_LOCATIONS, ...customPickup]
+      : [...DELIVERY_LOCATIONS, ...customDelivery]
+    : [];
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -343,64 +413,108 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
             />
           </SectionCard>
 
-          {/* Pickup */}
-          <SectionCard>
-            <SectionHeader
-              icon="upload"
-              iconColor={Colors.tertiary}
-              title="LẤY HÀNG"
-            />
-            <Label text="NGÀY LẤY" />
-            <TouchableOpacity style={styles.input} onPress={() => setShowPickupDate(true)}>
-              <Text style={styles.inputText}>{formatDate(form.pickupDate)}</Text>
-              <MaterialIcons name="calendar-today" size={18} color={Colors.outline} />
-            </TouchableOpacity>
+          {/* Pickup Stops */}
+          {form.stops.map((stop, index) => {
+            if (stop.type !== 'pickup') return null;
+            const pickupNum = form.stops.filter((s, i) => s.type === 'pickup' && i <= index).length;
+            return (
+              <SectionCard key={`stop-${index}`}>
+                <View style={styles.stopHeaderRow}>
+                  <SectionHeader
+                    icon="upload"
+                    iconColor={Colors.tertiary}
+                    title={pickupStops.length > 1 ? `LẤY HÀNG #${pickupNum}` : 'LẤY HÀNG'}
+                  />
+                  {pickupStops.length > 1 && (
+                    <TouchableOpacity
+                      style={styles.removeStopButton}
+                      onPress={() => removeStop(index)}
+                    >
+                      <MaterialIcons name="close" size={18} color={Colors.error} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <Label text="NGÀY LẤY" />
+                <TouchableOpacity style={styles.input} onPress={() => { setActiveStopIndex(index); setActiveModal('date'); }}>
+                  <Text style={styles.inputText}>{formatDate(stop.date)}</Text>
+                  <MaterialIcons name="calendar-today" size={18} color={Colors.outline} />
+                </TouchableOpacity>
 
-            <Label text="NƠI LẤY" />
-            <TouchableOpacity style={styles.input} onPress={() => setShowPickupLocationPicker(true)}>
-              <Text style={styles.inputText}>{form.pickupLocation}</Text>
-              <MaterialIcons name="keyboard-arrow-down" size={20} color={Colors.outline} />
-            </TouchableOpacity>
+                <Label text="NƠI LẤY" />
+                <TouchableOpacity style={styles.input} onPress={() => { setActiveStopIndex(index); setActiveModal('location'); }}>
+                  <Text style={styles.inputText}>{stop.location}</Text>
+                  <MaterialIcons name="keyboard-arrow-down" size={20} color={Colors.outline} />
+                </TouchableOpacity>
 
-            <Label text="SỐ LƯỢNG LẤY (KG)" />
-            <Input
-              placeholder="Nhập khối lượng..."
-              value={form.pickupWeight}
-              onChangeText={v => updateForm('pickupWeight', formatNumber(v))}
-              keyboardType="number-pad"
-            />
-          </SectionCard>
+                <Label text="SỐ LƯỢNG LẤY (KG)" />
+                <Input
+                  placeholder="Nhập khối lượng..."
+                  value={stop.weight}
+                  onChangeText={v => updateStop(index, 'weight', formatNumber(v))}
+                  keyboardType="number-pad"
+                />
+              </SectionCard>
+            );
+          })}
 
-          {/* Delivery */}
-          <SectionCard>
-            <SectionHeader
-              icon="download"
-              iconColor={Colors.primary}
-              title="GIAO HÀNG"
-              badge="KẾT THÚC"
-              badgeBg={Colors.primaryFixedBg}
-              badgeText={Colors.primaryFixedText}
-            />
-            <Label text="NGÀY GIAO" />
-            <TouchableOpacity style={styles.input} onPress={() => setShowDeliveryDate(true)}>
-              <Text style={styles.inputText}>{formatDate(form.deliveryDate)}</Text>
-              <MaterialIcons name="calendar-today" size={18} color={Colors.outline} />
-            </TouchableOpacity>
+          {/* Add Pickup Button */}
+          <TouchableOpacity style={styles.addStopButton} onPress={() => addStop('pickup')} activeOpacity={0.7}>
+            <MaterialIcons name="add-circle-outline" size={20} color={Colors.tertiary} />
+            <Text style={[styles.addStopText, { color: Colors.tertiary }]}>Thêm điểm lấy</Text>
+          </TouchableOpacity>
 
-            <Label text="NƠI GIAO" />
-            <TouchableOpacity style={styles.input} onPress={() => setShowDeliveryLocationPicker(true)}>
-              <Text style={styles.inputText}>{form.deliveryLocation}</Text>
-              <MaterialIcons name="keyboard-arrow-down" size={20} color={Colors.outline} />
-            </TouchableOpacity>
+          {/* Delivery Stops */}
+          {form.stops.map((stop, index) => {
+            if (stop.type !== 'delivery') return null;
+            const deliveryNum = form.stops.filter((s, i) => s.type === 'delivery' && i <= index).length;
+            return (
+              <SectionCard key={`stop-${index}`}>
+                <View style={styles.stopHeaderRow}>
+                  <SectionHeader
+                    icon="download"
+                    iconColor={Colors.primary}
+                    title={deliveryStops.length > 1 ? `GIAO HÀNG #${deliveryNum}` : 'GIAO HÀNG'}
+                    badge={deliveryNum === deliveryStops.length ? 'KẾT THÚC' : undefined}
+                    badgeBg={Colors.primaryFixedBg}
+                    badgeText={Colors.primaryFixedText}
+                  />
+                  {deliveryStops.length > 1 && (
+                    <TouchableOpacity
+                      style={styles.removeStopButton}
+                      onPress={() => removeStop(index)}
+                    >
+                      <MaterialIcons name="close" size={18} color={Colors.error} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <Label text="NGÀY GIAO" />
+                <TouchableOpacity style={styles.input} onPress={() => { setActiveStopIndex(index); setActiveModal('date'); }}>
+                  <Text style={styles.inputText}>{formatDate(stop.date)}</Text>
+                  <MaterialIcons name="calendar-today" size={18} color={Colors.outline} />
+                </TouchableOpacity>
 
-            <Label text="SỐ LƯỢNG GIAO (KG)" />
-            <Input
-              placeholder="Nhập khối lượng..."
-              value={form.deliveryWeight}
-              onChangeText={v => updateForm('deliveryWeight', formatNumber(v))}
-              keyboardType="number-pad"
-            />
-          </SectionCard>
+                <Label text="NƠI GIAO" />
+                <TouchableOpacity style={styles.input} onPress={() => { setActiveStopIndex(index); setActiveModal('location'); }}>
+                  <Text style={styles.inputText}>{stop.location}</Text>
+                  <MaterialIcons name="keyboard-arrow-down" size={20} color={Colors.outline} />
+                </TouchableOpacity>
+
+                <Label text="SỐ LƯỢNG GIAO (KG)" />
+                <Input
+                  placeholder="Nhập khối lượng..."
+                  value={stop.weight}
+                  onChangeText={v => updateStop(index, 'weight', formatNumber(v))}
+                  keyboardType="number-pad"
+                />
+              </SectionCard>
+            );
+          })}
+
+          {/* Add Delivery Button */}
+          <TouchableOpacity style={styles.addStopButton} onPress={() => addStop('delivery')} activeOpacity={0.7}>
+            <MaterialIcons name="add-circle-outline" size={20} color={Colors.primary} />
+            <Text style={[styles.addStopText, { color: Colors.primary }]}>Thêm điểm giao</Text>
+          </TouchableOpacity>
 
           {/* Costs & Fuel */}
           <SectionCard>
@@ -535,41 +649,24 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
         </SafeAreaView>
       </KeyboardAvoidingView>
 
-      {/* Date Picker Modals */}
+      {/* Date Picker Modal (shared for all stops) */}
       <DatePickerModal
-        visible={showPickupDate}
-        value={form.pickupDate}
-        title="Ngày lấy"
-        onConfirm={handlePickupDateConfirm}
-        onCancel={() => setShowPickupDate(false)}
-      />
-      <DatePickerModal
-        visible={showDeliveryDate}
-        value={form.deliveryDate}
-        title="Ngày giao"
-        minimumDate={form.pickupDate}
-        onConfirm={handleDeliveryDateConfirm}
-        onCancel={() => setShowDeliveryDate(false)}
+        visible={activeModal === 'date' && activeStopIndex !== null}
+        value={activeStop?.date ?? new Date()}
+        title={activeStop?.type === 'pickup' ? 'Ngày lấy' : 'Ngày giao'}
+        onConfirm={handleDateConfirm}
+        onCancel={() => { setActiveModal(null); setActiveStopIndex(null); }}
       />
 
-      {/* Picker Modals */}
+      {/* Location Picker Modal (shared for all stops) */}
       <PickerModal
-        visible={showPickupLocationPicker}
-        onClose={() => setShowPickupLocationPicker(false)}
-        title="Nơi lấy"
-        options={[...PICKUP_LOCATIONS, ...customPickup]}
-        selected={form.pickupLocation}
-        onSelect={v => { updateForm('pickupLocation', v); setShowPickupLocationPicker(false); }}
-        onAdd={v => { addCustomPickup(v); updateForm('pickupLocation', v); setShowPickupLocationPicker(false); }}
-      />
-      <PickerModal
-        visible={showDeliveryLocationPicker}
-        onClose={() => setShowDeliveryLocationPicker(false)}
-        title="Nơi giao"
-        options={[...DELIVERY_LOCATIONS, ...customDelivery]}
-        selected={form.deliveryLocation}
-        onSelect={v => { updateForm('deliveryLocation', v); setShowDeliveryLocationPicker(false); }}
-        onAdd={v => { addCustomDelivery(v); updateForm('deliveryLocation', v); setShowDeliveryLocationPicker(false); }}
+        visible={activeModal === 'location' && activeStopIndex !== null}
+        onClose={() => { setActiveModal(null); setActiveStopIndex(null); }}
+        title={activeStop?.type === 'pickup' ? 'Nơi lấy' : 'Nơi giao'}
+        options={activeLocationOptions}
+        selected={activeStop?.location ?? ''}
+        onSelect={handleLocationSelect}
+        onAdd={handleLocationAdd}
       />
     </SafeAreaView>
   );
@@ -621,6 +718,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
+    flex: 1,
   },
   sectionHeaderLeft: {
     flexDirection: 'row',
@@ -664,6 +762,35 @@ const styles = StyleSheet.create({
   inputText: {
     fontSize: 15,
     color: Colors.onSurface,
+    fontWeight: '600',
+  },
+  stopHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  removeStopButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.slateLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addStopButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: Colors.slateBorder,
+    backgroundColor: Colors.surfaceContainerLowest,
+  },
+  addStopText: {
+    fontSize: 14,
     fontWeight: '600',
   },
   bottomBar: {

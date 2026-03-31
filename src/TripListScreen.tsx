@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from './theme';
-import { getTrips, deleteTrip, TripRecord } from './api';
+import { getTrips, deleteTrip, TripRecord, stopsRouteSummary } from './api';
 import { showAlert, showConfirm } from './alert';
 
 interface Props {
@@ -48,9 +48,10 @@ export default function TripListScreen({ driver, onBack, onNewTrip, onEditTrip }
   };
 
   const handleDelete = (trip: TripRecord) => {
+    const route = stopsRouteSummary(trip.stops);
     showConfirm(
       'Xóa chuyến',
-      `Xóa chuyến ${trip.pickup_location} → ${trip.delivery_location}?`,
+      `Xóa chuyến ${route.pickups} → ${route.deliveries}?`,
       async () => {
         try {
           await deleteTrip(trip.id);
@@ -90,6 +91,7 @@ export default function TripListScreen({ driver, onBack, onNewTrip, onEditTrip }
     } catch {}
 
     const totalCosts = item.fuel_nam_phat_vnd + item.loading_fee_vnd + additionalTotal;
+    const route = stopsRouteSummary(item.stops);
 
     return (
       <TouchableOpacity
@@ -99,9 +101,9 @@ export default function TripListScreen({ driver, onBack, onNewTrip, onEditTrip }
       >
         <View style={styles.tripHeader}>
           <View style={styles.route}>
-            <Text style={styles.routeText}>{item.pickup_location}</Text>
+            <Text style={styles.routeText}>{route.pickups || '—'}</Text>
             <MaterialIcons name="arrow-forward" size={16} color={Colors.outline} />
-            <Text style={styles.routeText}>{item.delivery_location}</Text>
+            <Text style={styles.routeText}>{route.deliveries || '—'}</Text>
           </View>
           <View style={[styles.statusBadge, item.is_draft ? styles.draftBadge : styles.doneBadge]}>
             <Text style={[styles.statusText, item.is_draft ? styles.draftText : styles.doneText]}>
@@ -112,7 +114,7 @@ export default function TripListScreen({ driver, onBack, onNewTrip, onEditTrip }
 
         <View style={styles.tripDetails}>
           <Text style={styles.detailText}>
-            {formatTime(item.submitted_at)} | {item.pickup_weight_kg}kg → {item.delivery_weight_kg}kg
+            {formatTime(item.submitted_at)} | {route.totalPickupKg.toLocaleString('en-US')}kg → {route.totalDeliveryKg.toLocaleString('en-US')}kg
           </Text>
           {totalCosts > 0 && (
             <Text style={styles.costText}>Chi phí: {formatVnd(totalCosts)}</Text>
