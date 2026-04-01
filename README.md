@@ -54,26 +54,59 @@ flowchart TD
 erDiagram
     TRIP_FORM {
         string driverName "Read-only (from session)"
-        string advancePayment "VND, comma-formatted"
-        date pickupDate "Auto-set to today"
-        string pickupLocation "Picker: TPG, HL, KG, etc."
-        string pickupWeight "KG, comma-formatted"
-        date deliveryDate "Must be >= pickupDate"
-        string deliveryLocation "Picker: TBS, LHH, HT, etc."
-        string deliveryWeight "KG, max 1000kg diff from pickup"
-        string fuelNamPhat "VND"
+        string advancePayment "VND x1000, included in balance"
+        string openingBalance "VND x1000, auto-filled from prev trip"
+        array stops "Multi-stop: seq, type, location, date, weight, GPS"
+        string fuelNamPhat "VND x1000 (excluded from Chi)"
         string fuelHN "Liters"
-        string loadingFee "VND"
-        array additionalCosts "Dynamic list of name+amount+note"
+        string loadingFee "VND x1000"
+        array fixedCosts "9 categories: Xe xuc, Lo hoi, Can xe, etc."
         string notes "Free text"
+        number closingBalance "= Dư đầu + Ứng - Chi"
     }
 ```
+
+## Balance Chaining
+
+Trips chain like a wallet — each trip's closing balance carries forward as the next trip's opening balance:
+
+```mermaid
+flowchart LR
+    subgraph "Chuyến 1"
+        A1["Dư đầu: 0"] --> B1["+ Ứng: 5,000"]
+        B1 --> C1["- Chi: 3,000"]
+        C1 --> D1["Dư cuối: 2,000"]
+    end
+    subgraph "Chuyến 2"
+        A2["Dư đầu: 2,000"] --> B2["+ Ứng: 6,000"]
+        B2 --> C2["- Chi: 4,000"]
+        C2 --> D2["Dư cuối: 4,000"]
+    end
+    subgraph "Chuyến 3"
+        A3["Dư đầu: 4,000"] --> B3["+ Ứng: 0"]
+        B3 --> C3["- Chi: 1,000"]
+        C3 --> D3["Dư cuối: 3,000"]
+    end
+    D1 -.->|auto-fill| A2
+    D2 -.->|auto-fill| A3
+
+    style D1 fill:#d4edda
+    style D2 fill:#d4edda
+    style D3 fill:#d4edda
+```
+
+**Formula:** `Dư cuối = Dư đầu + Ứng − Chi` (Chi excludes Dầu Nam Phát)
+
+- **Dư đầu** (opening balance) — auto-populated from previous trip's Dư cuối, editable
+- **Ứng** (advance payment) — cash given to the driver before the trip
+- **Chi** (expenses) — loading fees + fixed costs (Nam Phat fuel tracked separately, excluded from balance)
+- Carries over across days (Monday's last Dư cuối → Tuesday's first Dư đầu)
 
 ## Features
 
 ### Core
 - **Driver session** — pick your name once, see only your trips
-- **Trip list** — recent trips (last 2 days) with pull-to-refresh
+- **Trip list** — recent trips (last 2 days) grouped by day with trip numbers, pull-to-refresh
 - **In-place editing** — tap any trip to modify it (PUT, no duplicates)
 - **Draft / Complete lifecycle** — save progress, confirm when done
 - **Confirmation popup** — "Xác nhận hoàn tất chuyến?" before finalizing
@@ -124,7 +157,7 @@ stateDiagram-v2
     [*] --> DriverSelect
     DriverSelect --> TripList : onSelect(driver)
     TripList --> DriverSelect : onBack
-    TripList --> TripForm_New : "Chuyến mới"
+    TripList --> TripForm_New : "Chuyến mới" + lastClosingBalance
     TripList --> TripForm_Edit : Tap existing trip
     TripForm_New --> TripList : onSaved / onBack
     TripForm_Edit --> TripList : onSaved / onBack

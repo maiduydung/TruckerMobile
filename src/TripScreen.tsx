@@ -27,6 +27,7 @@ const CUSTOM_DELIVERY_KEY = 'custom_delivery_locations';
 export interface TripScreenProps {
   driverName: string;
   editingTrip?: TripRecord | null;
+  lastClosingBalance?: number;
   onBack: () => void;
   onSaved: () => void;
 }
@@ -155,11 +156,13 @@ function tripRecordToForm(trip: TripRecord, driverName: string): TripFormData {
   };
 }
 
-function defaultForm(driverName: string): TripFormData {
+function defaultForm(driverName: string, lastClosingBalanceVnd?: number): TripFormData {
   return {
     driverName,
     advancePayment: '',
-    openingBalance: '',
+    openingBalance: lastClosingBalanceVnd
+      ? formatNumber(Math.round(lastClosingBalanceVnd / 1000).toString())
+      : '',
     stops: [
       { seq: 1, type: 'pickup', location: PICKUP_LOCATIONS[0], date: new Date(), weight: '', gps: null },
       { seq: 2, type: 'delivery', location: DELIVERY_LOCATIONS[0], date: new Date(), weight: '', gps: null },
@@ -181,12 +184,12 @@ function defaultForm(driverName: string): TripFormData {
   };
 }
 
-export default function TripScreen({ driverName, editingTrip, onBack, onSaved }: TripScreenProps) {
+export default function TripScreen({ driverName, editingTrip, lastClosingBalance, onBack, onSaved }: TripScreenProps) {
   const isEditing = !!editingTrip;
   const [tripId, setTripId] = useState<string | null>(editingTrip?.id ?? null);
 
   const [form, setForm] = useState<TripFormData>(() =>
-    editingTrip ? tripRecordToForm(editingTrip, driverName) : defaultForm(driverName),
+    editingTrip ? tripRecordToForm(editingTrip, driverName) : defaultForm(driverName, lastClosingBalance),
   );
 
   const [activeStopIndex, setActiveStopIndex] = useState<number | null>(null);
@@ -593,7 +596,8 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
             const totalCost = sumFormCosts(form);
             const fuelNPExcluded = parseNumber(form.fuelNamPhat);
             const totalCostDisplay = totalCost - fuelNPExcluded;
-            const closingBalance = parseNumber(form.openingBalance) - totalCostDisplay;
+            const advancePayment = parseNumber(form.advancePayment);
+            const closingBalance = parseNumber(form.openingBalance) + advancePayment - totalCostDisplay;
             const fmtSigned = (n: number) => {
               const prefix = n < 0 ? '-' : '';
               return prefix + Math.abs(n).toLocaleString('en-US');
@@ -625,6 +629,14 @@ export default function TripScreen({ driverName, editingTrip, onBack, onSaved }:
                     {totalCostDisplay.toLocaleString('en-US')}
                   </Text>
                 </View>
+                {advancePayment > 0 && (
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>TIỀN ỨNG (x1,000đ)</Text>
+                    <Text style={[styles.summaryValue, { color: Colors.tertiary }]}>
+                      +{advancePayment.toLocaleString('en-US')}
+                    </Text>
+                  </View>
+                )}
                 <View style={[styles.summaryRow, { borderTopWidth: 1, borderTopColor: Colors.slateBorder, paddingTop: 8 }]}>
                   <Text style={styles.summaryLabel}>DƯ CUỐI (x1,000đ)</Text>
                   <Text style={[styles.summaryValue, {

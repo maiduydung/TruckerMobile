@@ -4,7 +4,7 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  FlatList,
+  SectionList,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
@@ -17,7 +17,7 @@ import { showAlert, showConfirm } from './alert';
 interface Props {
   driver: string;
   onBack: () => void;
-  onNewTrip: () => void;
+  onNewTrip: (lastClosingBalance?: number) => void;
   onEditTrip: (trip: TripRecord) => void;
 }
 
@@ -68,53 +68,85 @@ export default function TripListScreen({ driver, onBack, onNewTrip, onEditTrip }
     const d = new Date(dateStr);
     const hh = String(d.getHours()).padStart(2, '0');
     const mm = String(d.getMinutes()).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const mo = String(d.getMonth() + 1).padStart(2, '0');
-    return `${hh}:${mm} - ${dd}/${mo}`;
+    return `${hh}:${mm}`;
   };
+
+  const formatDayLabel = (dateKey: string) => {
+    const today = new Date();
+    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+    const [, mo, dd] = dateKey.split('-');
+    if (dateKey === todayKey) return `Hôm nay — ${dd}/${mo}`;
+    if (dateKey === yesterdayKey) return `Hôm qua — ${dd}/${mo}`;
+    return `${dd}/${mo}`;
+  };
+
+  // Group trips by day (sorted newest-first), assign chronological trip numbers
+  const sections = (() => {
+    const byDay = new Map<string, TripRecord[]>();
+    for (const t of trips) {
+      const d = new Date(t.submitted_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      if (!byDay.has(key)) byDay.set(key, []);
+      byDay.get(key)!.push(t);
+    }
+    return Array.from(byDay.entries()).map(([dateKey, dayTrips]) => ({
+      title: formatDayLabel(dateKey),
+      // dayTrips are already newest-first from API; trip number = chronological position
+      data: dayTrips.map((trip, i) => ({ trip, tripNum: dayTrips.length - i })),
+    }));
+  })();
 
   const formatVnd = (amount: number) => {
     if (!amount) return '';
     return Math.round(amount / 1000).toLocaleString('en-US') + ' (x1,000đ)';
   };
 
-  const renderTrip = ({ item }: { item: TripRecord }) => {
+  const renderTrip = ({ item }: { item: { trip: TripRecord; tripNum: number } }) => {
+    const { trip, tripNum } = item;
     // Parse additional_costs total
     let additionalTotal = 0;
     try {
-      const costs = typeof item.additional_costs === 'string'
-        ? JSON.parse(item.additional_costs)
-        : item.additional_costs;
+      const costs = typeof trip.additional_costs === 'string'
+        ? JSON.parse(trip.additional_costs)
+        : trip.additional_costs;
       if (Array.isArray(costs)) {
         additionalTotal = costs.reduce((sum: number, c: any) => sum + (c.amountVnd || 0), 0);
       }
     } catch {}
 
-    const totalCosts = item.fuel_nam_phat_vnd + item.loading_fee_vnd + additionalTotal;
-    const route = stopsRouteSummary(item.stops);
+    const totalCosts = trip.fuel_nam_phat_vnd + trip.loading_fee_vnd + additionalTotal;
+    const route = stopsRouteSummary(trip.stops);
 
     return (
       <TouchableOpacity
         style={styles.tripCard}
-        onPress={() => onEditTrip(item)}
+        onPress={() => onEditTrip(trip)}
         activeOpacity={0.7}
       >
         <View style={styles.tripHeader}>
-          <View style={styles.route}>
-            <Text style={styles.routeText}>{route.pickups || '—'}</Text>
-            <MaterialIcons name="arrow-forward" size={16} color={Colors.outline} />
-            <Text style={styles.routeText}>{route.deliveries || '—'}</Text>
+          <View style={styles.tripNumRow}>
+            <View style={styles.tripNumBadge}>
+              <Text style={styles.tripNumText}>#{tripNum}</Text>
+            </View>
+            <View style={styles.route}>
+              <Text style={styles.routeText}>{route.pickups || '—'}</Text>
+              <MaterialIcons name="arrow-forward" size={16} color={Colors.outline} />
+              <Text style={styles.routeText}>{route.deliveries || '—'}</Text>
+            </View>
           </View>
-          <View style={[styles.statusBadge, item.is_draft ? styles.draftBadge : styles.doneBadge]}>
-            <Text style={[styles.statusText, item.is_draft ? styles.draftText : styles.doneText]}>
-              {item.is_draft ? 'Nháp' : 'Xong'}
+          <View style={[styles.statusBadge, trip.is_draft ? styles.draftBadge : styles.doneBadge]}>
+            <Text style={[styles.statusText, trip.is_draft ? styles.draftText : styles.doneText]}>
+              {trip.is_draft ? 'Nháp' : 'Xong'}
             </Text>
           </View>
         </View>
 
         <View style={styles.tripDetails}>
           <Text style={styles.detailText}>
-            {formatTime(item.submitted_at)} | {route.totalPickupKg.toLocaleString('en-US')}kg → {route.totalDeliveryKg.toLocaleString('en-US')}kg
+            {formatTime(trip.submitted_at)} | {route.totalPickupKg.toLocaleString('en-US')}kg → {route.totalDeliveryKg.toLocaleString('en-US')}kg
           </Text>
           {totalCosts > 0 && (
             <Text style={styles.costText}>Chi phí: {formatVnd(totalCosts)}</Text>
@@ -124,14 +156,14 @@ export default function TripListScreen({ driver, onBack, onNewTrip, onEditTrip }
         <View style={styles.tripActions}>
           <TouchableOpacity
             style={styles.editHint}
-            onPress={() => onEditTrip(item)}
+            onPress={() => onEditTrip(trip)}
           >
             <MaterialIcons name="edit" size={16} color={Colors.primary} />
             <Text style={styles.editHintText}>Sửa</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.deleteHint}
-            onPress={() => handleDelete(item)}
+            onPress={() => handleDelete(trip)}
           >
             <MaterialIcons name="delete-outline" size={16} color={Colors.error} />
           </TouchableOpacity>
@@ -139,6 +171,14 @@ export default function TripListScreen({ driver, onBack, onNewTrip, onEditTrip }
       </TouchableOpacity>
     );
   };
+
+  const renderSectionHeader = ({ section }: { section: { title: string } }) => (
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionLine} />
+      <Text style={styles.sectionTitle}>{section.title}</Text>
+      <View style={styles.sectionLine} />
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -160,11 +200,13 @@ export default function TripListScreen({ driver, onBack, onNewTrip, onEditTrip }
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>
       ) : (
-        <FlatList
-          data={trips}
-          keyExtractor={item => item.id}
+        <SectionList
+          sections={sections}
+          keyExtractor={item => item.trip.id}
           renderItem={renderTrip}
+          renderSectionHeader={renderSectionHeader}
           contentContainerStyle={styles.list}
+          stickySectionHeadersEnabled={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
           }
@@ -179,7 +221,7 @@ export default function TripListScreen({ driver, onBack, onNewTrip, onEditTrip }
 
       {/* New Trip Button */}
       <SafeAreaView edges={['bottom']} style={styles.bottomBar}>
-        <TouchableOpacity style={styles.newTripButton} onPress={onNewTrip} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.newTripButton} onPress={() => onNewTrip(trips.length > 0 ? trips[0].closing_balance : undefined)} activeOpacity={0.7}>
           <MaterialIcons name="add" size={20} color={Colors.white} />
           <Text style={styles.newTripText}>CHUYẾN MỚI</Text>
         </TouchableOpacity>
@@ -223,7 +265,6 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: 16,
-    gap: 12,
   },
   center: {
     flex: 1,
@@ -235,11 +276,29 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.outline,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  sectionLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: Colors.slateBorder,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.outline,
+  },
   tripCard: {
     backgroundColor: Colors.surfaceContainerLowest,
     borderRadius: 14,
     padding: 16,
     gap: 8,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -250,6 +309,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  tripNumRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tripNumBadge: {
+    backgroundColor: Colors.primaryFixedBg,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  tripNumText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.primaryFixedText,
   },
   route: {
     flexDirection: 'row',

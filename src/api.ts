@@ -57,10 +57,12 @@ export function buildPayload(
 ): TripPayload {
   const totalCost = sumFormCosts(form) * 1000;
   const openingBalance = parseNumber(form.openingBalance) * 1000;
+  const advancePayment = parseNumber(form.advancePayment) * 1000;
+  const fuelNamPhatVnd = parseNumber(form.fuelNamPhat) * 1000;
 
   return {
     driverName: form.driverName,
-    advancePayment: parseNumber(form.advancePayment) * 1000,
+    advancePayment,
     openingBalance,
 
     stops: form.stops.map(s => ({
@@ -72,7 +74,7 @@ export function buildPayload(
       gps: s.gps,
     })),
 
-    fuelNamPhatVnd: parseNumber(form.fuelNamPhat) * 1000,
+    fuelNamPhatVnd,
     fuelHnLiters: parseNumber(form.fuelHN),
     loadingFeeVnd: parseNumber(form.loadingFee) * 1000,
     additionalCosts: FIXED_COSTS
@@ -83,7 +85,7 @@ export function buildPayload(
       }))
       .filter(c => c.amountVnd > 0),
     totalCost,
-    closingBalance: openingBalance - totalCost,
+    closingBalance: openingBalance + advancePayment - (totalCost - fuelNamPhatVnd),
 
     notes: form.notes,
     isDraft,

@@ -2,6 +2,17 @@
 
 All notable changes to the NhuTin Trucker Mobile app.
 
+## [0.6.0] - 2026-04-01
+
+### Added
+- **Balance chaining across trips** — closing balance formula updated to `Dư cuối = Dư đầu + Ứng − Chi` (advance payment now included in the calculation, Nam Phat fuel still excluded from Chi). Previously, advance payment was tracked but not part of the balance.
+- **Auto-populate opening balance** — when creating a new trip, the opening balance (Dư đầu) is automatically pre-filled with the previous trip's closing balance (Dư cuối). Works across days like a running wallet balance. Drivers can still manually override.
+- **Trip list grouped by day** — trips are now shown under day section headers ("Hôm nay", "Hôm qua", or date) with chronological trip numbers (#1, #2, #3) on each card. Most recent trip appears first within each day.
+- **Advance payment shown in summary** — "TIỀN ỨNG" row now appears in the trip summary card when advance payment > 0, making the balance formula transparent.
+
+### Fixed
+- **Closing balance payload mismatch** — the API payload previously included Nam Phat fuel in the closing balance calculation, but the display excluded it. Both now consistently exclude Nam Phat fuel.
+
 ## [0.5.3] - 2026-03-31
 
 ### Changed

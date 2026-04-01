@@ -9,7 +9,7 @@ import { TripRecord } from './src/api';
 type Screen =
   | { name: 'driver-select' }
   | { name: 'trip-list'; driver: string }
-  | { name: 'trip-form'; driver: string; editingTrip?: TripRecord | null };
+  | { name: 'trip-form'; driver: string; editingTrip?: TripRecord | null; lastClosingBalance?: number };
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'driver-select' });
@@ -24,8 +24,8 @@ export default function App() {
     setScreen({ name: 'trip-list', driver });
   }, []);
 
-  const goToTripForm = useCallback((driver: string, editingTrip?: TripRecord | null) => {
-    setScreen({ name: 'trip-form', driver, editingTrip });
+  const goToTripForm = useCallback((driver: string, editingTrip?: TripRecord | null, lastClosingBalance?: number) => {
+    setScreen({ name: 'trip-form', driver, editingTrip, lastClosingBalance });
   }, []);
 
   const handleSaved = useCallback(() => {
@@ -46,7 +46,7 @@ export default function App() {
           key={listKey}
           driver={screen.driver}
           onBack={goToDriverSelect}
-          onNewTrip={() => goToTripForm(screen.driver)}
+          onNewTrip={(lastClosingBalance) => goToTripForm(screen.driver, null, lastClosingBalance)}
           onEditTrip={(trip) => goToTripForm(screen.driver, trip)}
         />
       )}
@@ -54,6 +54,7 @@ export default function App() {
         <TripScreen
           driverName={screen.driver}
           editingTrip={screen.editingTrip}
+          lastClosingBalance={screen.lastClosingBalance}
           onBack={() => goToTripList(screen.driver)}
           onSaved={handleSaved}
         />

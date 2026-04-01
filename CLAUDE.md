@@ -38,17 +38,25 @@ A React Native (Expo) mobile app for truck drivers at a Vietnamese logistics SME
 ## App flow
 
 1. Driver opens app → picks their name (DriverSelectScreen)
-2. Sees their trips from last 2 days (TripListScreen)
-3. Taps "Chuyến mới" for new trip, or taps existing trip to edit
+2. Sees their trips from last 2 days, grouped by day with trip numbers (TripListScreen)
+3. Taps "Chuyến mới" for new trip (Dư đầu auto-filled from last trip's Dư cuối), or taps existing trip to edit
 4. TripScreen: "Lưu tạm" = save draft, "Hoàn tất chuyến" = confirm + finalize
 5. New trips → POST, existing trips → PUT (same form, different API call)
 6. After save, navigates back to trip list (refreshes automatically)
+
+## Balance chaining
+
+Trips chain like a wallet: `Dư cuối = Dư đầu + Ứng − Chi` (Chi excludes Dầu Nam Phát).
+- New trip's Dư đầu is auto-populated from the previous trip's Dư cuối (carries across days).
+- Driver can manually override the pre-filled Dư đầu.
+- No cascade: editing an old trip does NOT retroactively update subsequent trips.
 
 ## Important patterns
 
 - **No driver picker in the form** — driver name comes from the "session" (props). It's read-only in TripScreen.
 - **`tripId` state** tracks whether we POST (new) or PUT (edit). Set on first save.
 - **`tripRecordToForm()`** converts backend snake_case TripRecord → form state. `buildPayload()` converts form state → camelCase API payload.
+- **`lastClosingBalance` prop** threads through App.tsx → TripScreen for auto-populating Dư đầu on new trips.
 - **Cross-platform alerts** — must use `showAlert`/`showConfirm` from `alert.ts`, NOT `Alert.alert` directly (it's a no-op on web).
 
 ## Companion repos
