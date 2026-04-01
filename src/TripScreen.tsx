@@ -624,19 +624,23 @@ export default function TripScreen({ driverName, editingTrip, lastClosingBalance
                   <Text style={styles.excludeNote}>* Loại trừ dầu Nam Phát / dầu HN</Text>
                 )}
                 <View style={[styles.summaryRow, { borderTopWidth: 1, borderTopColor: Colors.slateBorder, paddingTop: 8, marginTop: 4 }]}>
+                  <Text style={styles.summaryLabel}>TIỀN ỨNG (x1,000đ)</Text>
+                  <Text style={styles.summaryValue}>
+                    {advancePayment.toLocaleString('en-US')}
+                  </Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>DƯ ĐẦU (x1,000đ)</Text>
+                  <Text style={styles.summaryValue}>
+                    {parseNumber(form.openingBalance).toLocaleString('en-US')}
+                  </Text>
+                </View>
+                <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>TỔNG CHI PHÍ (x1,000đ)</Text>
                   <Text style={styles.summaryValue}>
                     {totalCostDisplay.toLocaleString('en-US')}
                   </Text>
                 </View>
-                {advancePayment > 0 && (
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>TIỀN ỨNG (x1,000đ)</Text>
-                    <Text style={[styles.summaryValue, { color: Colors.tertiary }]}>
-                      +{advancePayment.toLocaleString('en-US')}
-                    </Text>
-                  </View>
-                )}
                 <View style={[styles.summaryRow, { borderTopWidth: 1, borderTopColor: Colors.slateBorder, paddingTop: 8 }]}>
                   <Text style={styles.summaryLabel}>DƯ CUỐI (x1,000đ)</Text>
                   <Text style={[styles.summaryValue, {

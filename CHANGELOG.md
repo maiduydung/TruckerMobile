@@ -2,6 +2,12 @@
 
 All notable changes to the NhuTin Trucker Mobile app.
 
+## [0.6.1] - 2026-04-01
+
+### Changed
+- **Tổng kết summary redesigned** — now shows Tiền ứng, Dư đầu, Tổng chi phí, and Dư cuối as dedicated rows (always visible, not conditional). Makes the balance formula transparent at a glance.
+- **Trip history extended to 30 days** — trip list now shows last 30 days instead of 2. Extracted as `TRIP_HISTORY_DAYS` constant for easy adjustment.
+
 ## [0.6.0] - 2026-04-01
 
 ### Added

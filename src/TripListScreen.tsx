@@ -14,6 +14,9 @@ import { Colors } from './theme';
 import { getTrips, deleteTrip, TripRecord, stopsRouteSummary } from './api';
 import { showAlert, showConfirm } from './alert';
 
+/** Number of days of trip history to show. */
+const TRIP_HISTORY_DAYS = 30;
+
 interface Props {
   driver: string;
   onBack: () => void;
@@ -28,7 +31,7 @@ export default function TripListScreen({ driver, onBack, onNewTrip, onEditTrip }
 
   const fetchTrips = useCallback(async () => {
     try {
-      const data = await getTrips(driver);
+      const data = await getTrips(driver, TRIP_HISTORY_DAYS);
       setTrips(data);
     } catch {
       showAlert('Lỗi', 'Không thể tải danh sách chuyến.');
