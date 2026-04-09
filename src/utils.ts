@@ -1,7 +1,8 @@
 export function formatNumber(value: string): string {
+  const negative = value.includes('-');
   const num = value.replace(/\D/g, '');
   if (!num) return '';
-  return Number(num).toLocaleString('en-US');
+  return (negative ? '-' : '') + Number(num).toLocaleString('en-US');
 }
 
 export function parseNumber(formatted: string): number {

@@ -32,6 +32,14 @@ describe('formatNumber', () => {
   test('strips letters mixed with digits', () => {
     expect(formatNumber('1a2b3c')).toBe('123');
   });
+
+  test('preserves negative sign', () => {
+    expect(formatNumber('-1940')).toBe('-1,940');
+  });
+
+  test('formats negative large number', () => {
+    expect(formatNumber('-2190000')).toBe('-2,190,000');
+  });
 });
 
 describe('parseNumber', () => {
@@ -57,5 +65,9 @@ describe('parseNumber', () => {
 
   test('handles zero', () => {
     expect(parseNumber('0')).toBe(0);
+  });
+
+  test('parses negative formatted number', () => {
+    expect(parseNumber('-1,940')).toBe(-1940);
   });
 });
